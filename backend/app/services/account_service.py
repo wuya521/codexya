@@ -8,11 +8,14 @@ from app.models.db_models import (
     BillingOrderModel,
     OrganizationMemberModel,
     OrganizationModel,
+    RedemptionCodeModel,
     SubscriptionModel,
     UserModel
 )
 from app.schemas.account import (
     AccountOverviewRecord,
+    AdminRedemptionCodeCreateRequest,
+    AdminRedemptionCodeUpdateRequest,
     AdminOrganizationRecord,
     AdminOverviewRecord,
     AdminUserRecord,
@@ -25,6 +28,9 @@ from app.schemas.account import (
     OrganizationRecord,
     PlanDistributionItem,
     PlanRecord,
+    QuotaSnapshotRecord,
+    RedeemCodeResponse,
+    RedemptionCodeRecord,
     RecentAnalysisItem,
     SubscriptionRecord
 )
@@ -124,6 +130,7 @@ def bootstrap_account_data(db: Session) -> None:
                 role="admin",
                 plan_id="plan-enterprise",
                 monthly_analysis_usage=12,
+                bonus_quota_balance=0,
                 last_usage_reset_at=now,
                 last_active_at=now
             )
@@ -155,6 +162,7 @@ def get_user_model(db: Session, user_id: str | None = None) -> UserModel:
 
 
 def serialize_user(db: Session, user: UserModel) -> CurrentUserRecord:
+    user = _reset_usage_if_needed(db, user)
     plan = _serialize_plan(user.plan_id, db)
     membership = repository.get_primary_membership(db, user.id)
     organization = (
@@ -167,8 +175,9 @@ def serialize_user(db: Session, user: UserModel) -> CurrentUserRecord:
         if membership is not None
         else None
     )
-    remaining = max(plan.monthly_analysis_quota - user.monthly_analysis_usage, 0)
+    quota_snapshot = _build_quota_snapshot(user, plan)
     auth_account = repository.get_auth_account_by_user_id(db, user.id)
+    latest_redemption = _get_latest_redemption_for_user(db, user.id)
     return CurrentUserRecord(
         id=user.id,
         name=user.name,
@@ -179,13 +188,17 @@ def serialize_user(db: Session, user: UserModel) -> CurrentUserRecord:
         plan=plan,
         monthly_usage=user.monthly_analysis_usage,
         monthly_limit=plan.monthly_analysis_quota,
-        remaining_quota=remaining,
+        bonus_quota_balance=user.bonus_quota_balance,
+        quota_snapshot=quota_snapshot,
+        remaining_quota=quota_snapshot.total_remaining,
         can_access_admin=user.role == "admin",
         active_job_count=repository.count_analysis_jobs(
             db,
             user_id=user.id,
             statuses={"queued", "running"}
         ),
+        latest_redemption_at=latest_redemption.redeemed_at if latest_redemption is not None else None,
+        latest_redemption_summary=_build_redemption_summary(db, latest_redemption),
         organization=organization,
         organization_role=membership.role if membership is not None else None,
         active_subscription=subscription
@@ -209,6 +222,7 @@ def get_account_overview(db: Session, user: UserModel) -> AccountOverviewRecord:
         active_subscription=current_user.active_subscription,
         recent_orders=recent_orders,
         recent_audits=recent_audits,
+        recent_redemptions=list_recent_redemptions(db, user.id, limit=6),
         recent_analyses=recent_analyses,
         recent_jobs=list_user_analysis_jobs(db, user, limit=8)
     )
@@ -268,6 +282,7 @@ def create_organization_member(
                 role="user",
                 plan_id="plan-free",
                 monthly_analysis_usage=0,
+                bonus_quota_balance=0,
                 last_usage_reset_at=datetime.now(timezone.utc),
                 last_active_at=datetime.now(timezone.utc)
             )
@@ -389,42 +404,16 @@ def switch_plan(
     if organization is None:
         raise ValueError("当前组织不存在")
 
-    amount = plan.yearly_price if billing_cycle == "yearly" else plan.monthly_price
-    now = datetime.now(timezone.utc)
-
-    repository.update_user_plan(db, user, plan_id)
-    order = repository.create_order(
+    refreshed_user, subscription, order = _apply_plan_change(
         db,
-        BillingOrderModel(
-            id=f"order-{uuid4().hex[:10]}",
-            organization_id=organization.id,
-            user_id=user.id,
-            plan_id=plan_id,
-            billing_cycle=billing_cycle,
-            amount=amount,
-            currency="CNY",
-            status="paid",
-            provider="manual",
-            provider_reference=f"manual-{uuid4().hex[:8]}",
-            metadata_payload={"initiator": user.email, "plan_name": plan.name},
-            paid_at=now
-        )
-    )
-    subscription = repository.create_or_replace_subscription(
-        db,
-        SubscriptionModel(
-            id=f"subscription-{organization.id}",
-            organization_id=organization.id,
-            plan_id=plan_id,
-            billing_cycle=billing_cycle,
-            status="active",
-            amount=amount,
-            currency="CNY",
-            provider="manual",
-            cancel_at_period_end=False,
-            current_period_start=now,
-            current_period_end=now + timedelta(days=365 if billing_cycle == "yearly" else 30)
-        )
+        user=user,
+        organization=organization,
+        plan=plan,
+        billing_cycle=billing_cycle,
+        provider="manual",
+        provider_reference=f"manual-{uuid4().hex[:8]}",
+        amount=plan.yearly_price if billing_cycle == "yearly" else plan.monthly_price,
+        metadata_payload={"initiator": user.email, "plan_name": plan.name}
     )
     repository.create_audit_log(
         db,
@@ -439,14 +428,276 @@ def switch_plan(
             metadata_payload={"plan_id": plan_id, "billing_cycle": billing_cycle}
         )
     )
-    refreshed_user = repository.get_user(db, user.id)
-    if refreshed_user is None:
-        raise ValueError("用户不存在")
-
     return (
         serialize_user(db, refreshed_user),
         _serialize_subscription(subscription, db),
         _serialize_order(order, db)
+    )
+
+
+def redeem_code(db: Session, user: UserModel, code_input: str) -> RedeemCodeResponse:
+    membership = repository.get_primary_membership(db, user.id)
+    organization_id = membership.organization_id if membership is not None else ""
+    normalized_code = code_input.strip().upper()
+    if not normalized_code:
+        raise ValueError("请输入有效的兑换码。")
+
+    redemption_code = repository.get_redemption_code_by_code(db, normalized_code)
+    if redemption_code is None:
+        _create_redemption_audit(
+            db,
+            actor_user_id=user.id,
+            organization_id=organization_id,
+            action="billing.redemption_failed",
+            summary=f"{user.name} 尝试兑换不存在的兑换码 {normalized_code}",
+            entity_id=normalized_code,
+            metadata={"reason": "not_found"}
+        )
+        raise ValueError("兑换码不存在，请检查后重试。")
+
+    redemption_code = _synchronize_redemption_status(db, redemption_code)
+    if redemption_code.status == "disabled":
+        _create_redemption_audit(
+            db,
+            actor_user_id=user.id,
+            organization_id=organization_id,
+            action="billing.redemption_failed",
+            summary=f"{user.name} 尝试兑换已停用的兑换码 {redemption_code.code}",
+            entity_id=redemption_code.id,
+            metadata={"reason": "disabled"}
+        )
+        raise ValueError("该兑换码已停用。")
+    if redemption_code.status == "expired":
+        _create_redemption_audit(
+            db,
+            actor_user_id=user.id,
+            organization_id=organization_id,
+            action="billing.redemption_failed",
+            summary=f"{user.name} 尝试兑换已过期的兑换码 {redemption_code.code}",
+            entity_id=redemption_code.id,
+            metadata={"reason": "expired"}
+        )
+        raise ValueError("该兑换码已过期。")
+    if redemption_code.status == "redeemed":
+        _create_redemption_audit(
+            db,
+            actor_user_id=user.id,
+            organization_id=organization_id,
+            action="billing.redemption_failed",
+            summary=f"{user.name} 尝试重复兑换已使用的兑换码 {redemption_code.code}",
+            entity_id=redemption_code.id,
+            metadata={"reason": "already_redeemed", "redeemed_by_user_id": redemption_code.redeemed_by_user_id}
+        )
+        raise ValueError("该兑换码已经使用过了。")
+
+    plan = repository.get_plan(db, user.plan_id)
+    if plan is None:
+        raise ValueError("当前用户套餐不存在。")
+
+    subscription_record: SubscriptionRecord | None = None
+    order_record: BillingOrderRecord | None = None
+
+    if redemption_code.reward_type == "plan":
+        if membership is None:
+            raise ValueError("当前用户没有可用组织，无法开通套餐。")
+        organization = repository.get_organization(db, membership.organization_id)
+        if organization is None:
+            raise ValueError("当前组织不存在。")
+        target_plan = repository.get_plan(db, redemption_code.plan_id or "")
+        if target_plan is None:
+            raise ValueError("兑换码绑定的套餐不存在。")
+
+        refreshed_user, subscription_model, order_model = _apply_plan_change(
+            db,
+            user=user,
+            organization=organization,
+            plan=target_plan,
+            billing_cycle=redemption_code.billing_cycle or "monthly",
+            provider="redeem_code",
+            provider_reference=redemption_code.code,
+            amount=0.0,
+            metadata_payload={
+                "initiator": user.email,
+                "plan_name": target_plan.name,
+                "reward_type": "plan",
+                "redeem_code": redemption_code.code
+            }
+        )
+        subscription_record = _serialize_subscription(subscription_model, db)
+        order_record = _serialize_order(order_model, db)
+    else:
+        repository.increment_user_bonus_quota(db, user, redemption_code.quota_amount or 0)
+        refreshed_user = repository.get_user(db, user.id)
+        if refreshed_user is None:
+            raise ValueError("用户不存在。")
+
+    redemption_code.status = "redeemed"
+    redemption_code.redeemed_by_user_id = user.id
+    redemption_code.redeemed_at = datetime.now(timezone.utc)
+    redemption_code.updated_at = redemption_code.redeemed_at
+    repository.save_redemption_code(db, redemption_code)
+
+    refreshed_user = repository.get_user(db, user.id)
+    if refreshed_user is None:
+        raise ValueError("用户不存在。")
+
+    refreshed_record = serialize_user(db, refreshed_user)
+    reward_description = _build_redemption_summary(db, redemption_code)
+    _create_redemption_audit(
+        db,
+        actor_user_id=user.id,
+        organization_id=organization_id,
+        action="billing.code_redeemed",
+        summary=f"{user.name} 成功兑换 {redemption_code.code}，获得{reward_description or '权益'}",
+        entity_id=redemption_code.id,
+        metadata={
+            "reward_type": redemption_code.reward_type,
+            "plan_id": redemption_code.plan_id,
+            "quota_amount": redemption_code.quota_amount
+        }
+    )
+
+    return RedeemCodeResponse(
+        message=f"兑换成功，已为你发放{reward_description or '对应权益'}。",
+        reward_type=redemption_code.reward_type,
+        user=refreshed_record,
+        subscription=subscription_record,
+        order=order_record,
+        quota_snapshot=refreshed_record.quota_snapshot,
+        redeemed_code=_serialize_redemption_code(db, redemption_code)
+    )
+
+
+def list_recent_redemptions(
+    db: Session,
+    user_id: str,
+    limit: int = 8
+) -> list[RedemptionCodeRecord]:
+    rows = repository.list_redemption_codes(db, redeemed_by_user_id=user_id, limit=limit)
+    return [_serialize_redemption_code(db, row) for row in rows]
+
+
+def list_admin_redemption_codes(db: Session, limit: int = 120) -> list[RedemptionCodeRecord]:
+    rows = repository.list_redemption_codes(db, limit=limit)
+    return [_serialize_redemption_code(db, _synchronize_redemption_status(db, row)) for row in rows]
+
+
+def create_admin_redemption_codes(
+    db: Session,
+    actor: UserModel,
+    payload: AdminRedemptionCodeCreateRequest
+) -> list[RedemptionCodeRecord]:
+    if payload.reward_type == "plan":
+        if not payload.plan_id:
+            raise ValueError("套餐兑换码必须绑定目标套餐。")
+        if repository.get_plan(db, payload.plan_id) is None:
+            raise ValueError("目标套餐不存在。")
+    else:
+        if not payload.quota_amount:
+            raise ValueError("额度兑换码必须设置额度数量。")
+
+    created_records: list[RedemptionCodeRecord] = []
+    for _ in range(payload.quantity):
+        redemption_code = repository.create_redemption_code(
+            db,
+            RedemptionCodeModel(
+                id=f"redeem-{uuid4().hex[:10]}",
+                code=_generate_redemption_code(db),
+                status="active",
+                reward_type=payload.reward_type,
+                plan_id=payload.plan_id,
+                billing_cycle=payload.billing_cycle if payload.reward_type == "plan" else None,
+                quota_amount=payload.quota_amount if payload.reward_type == "quota" else None,
+                expires_at=payload.expires_at,
+                note=payload.note.strip(),
+                created_by_user_id=actor.id
+            )
+        )
+        created_records.append(_serialize_redemption_code(db, redemption_code))
+
+    _create_redemption_audit(
+        db,
+        actor_user_id=actor.id,
+        organization_id="",
+        action="admin.redemption_code_created",
+        summary=f"{actor.name} 创建了 {payload.quantity} 个兑换码",
+        entity_id=created_records[0].id if created_records else "",
+        metadata={
+            "quantity": payload.quantity,
+            "reward_type": payload.reward_type,
+            "plan_id": payload.plan_id,
+            "quota_amount": payload.quota_amount
+        }
+    )
+    return created_records
+
+
+def update_admin_redemption_code(
+    db: Session,
+    actor: UserModel,
+    redemption_code_id: str,
+    payload: AdminRedemptionCodeUpdateRequest
+) -> RedemptionCodeRecord:
+    redemption_code = repository.get_redemption_code(db, redemption_code_id)
+    if redemption_code is None:
+        raise ValueError("目标兑换码不存在。")
+
+    redemption_code = _synchronize_redemption_status(db, redemption_code)
+    changes: dict[str, str | None] = {}
+
+    if payload.note is not None and payload.note != redemption_code.note:
+        redemption_code.note = payload.note.strip()
+        changes["note"] = redemption_code.note
+
+    if payload.expires_at is not None and payload.expires_at != redemption_code.expires_at:
+        redemption_code.expires_at = payload.expires_at
+        changes["expires_at"] = payload.expires_at.isoformat()
+
+    if payload.status is not None and payload.status != redemption_code.status:
+        if redemption_code.status == "redeemed":
+            raise ValueError("已使用的兑换码不能再修改状态。")
+        redemption_code.status = payload.status
+        changes["status"] = payload.status
+
+    repository.save_redemption_code(db, redemption_code)
+    redemption_code = _synchronize_redemption_status(db, redemption_code)
+
+    if changes:
+        _create_redemption_audit(
+            db,
+            actor_user_id=actor.id,
+            organization_id="",
+            action="admin.redemption_code_updated",
+            summary=f"{actor.name} 更新了兑换码 {redemption_code.code}",
+            entity_id=redemption_code.id,
+            metadata=changes
+        )
+
+    return _serialize_redemption_code(db, redemption_code)
+
+
+def delete_admin_redemption_code(
+    db: Session,
+    actor: UserModel,
+    redemption_code_id: str
+) -> None:
+    redemption_code = repository.get_redemption_code(db, redemption_code_id)
+    if redemption_code is None:
+        raise ValueError("目标兑换码不存在。")
+    redemption_code = _synchronize_redemption_status(db, redemption_code)
+    if redemption_code.status == "redeemed":
+        raise ValueError("已兑换的兑换码不能删除。")
+
+    code = redemption_code.code
+    repository.delete_redemption_code(db, redemption_code_id)
+    _create_redemption_audit(
+        db,
+        actor_user_id=actor.id,
+        organization_id="",
+        action="admin.redemption_code_deleted",
+        summary=f"{actor.name} 删除了兑换码 {code}",
+        entity_id=redemption_code_id,
+        metadata={"code": code}
     )
 
 
@@ -456,12 +707,24 @@ def ensure_analysis_quota(db: Session, user: UserModel) -> None:
     if plan is None:
         raise ValueError("用户套餐不存在")
 
-    if user.monthly_analysis_usage >= plan.monthly_analysis_quota:
+    quota_snapshot = _build_quota_snapshot(user, plan)
+    if quota_snapshot.total_remaining <= 0:
         raise RuntimeError(f"当前套餐本月额度已用尽，请升级到更高版本。当前套餐：{plan.name}")
 
 
 def mark_analysis_usage(db: Session, user: UserModel) -> CurrentUserRecord:
-    updated = repository.increment_user_usage(db, user)
+    user = _reset_usage_if_needed(db, user)
+    plan = repository.get_plan(db, user.plan_id)
+    if plan is None:
+        raise ValueError("用户套餐不存在")
+
+    quota_snapshot = _build_quota_snapshot(user, plan)
+    if quota_snapshot.base_remaining > 0:
+        updated = repository.increment_user_usage(db, user)
+    elif quota_snapshot.bonus_remaining > 0:
+        updated = repository.decrement_user_bonus_quota(db, user, 1)
+    else:
+        raise RuntimeError("当前账号已经没有可用额度。")
     return serialize_user(db, updated)
 
 
@@ -479,6 +742,8 @@ def list_admin_users(db: Session) -> list[AdminUserRecord]:
         if plan is None:
             continue
         auth_account = repository.get_auth_account_by_user_id(db, user.id)
+        quota_snapshot = _build_quota_snapshot(user, _serialize_plan(plan.id, db))
+        latest_redemption = _get_latest_redemption_for_user(db, user.id)
         rows.append(
             AdminUserRecord(
                 id=user.id,
@@ -494,12 +759,16 @@ def list_admin_users(db: Session) -> list[AdminUserRecord]:
                 plan_name=plan.name,
                 monthly_usage=user.monthly_analysis_usage,
                 monthly_limit=plan.monthly_analysis_quota,
-                remaining_quota=max(plan.monthly_analysis_quota - user.monthly_analysis_usage, 0),
+                bonus_quota_balance=user.bonus_quota_balance,
+                quota_snapshot=quota_snapshot,
+                remaining_quota=quota_snapshot.total_remaining,
                 active_job_count=repository.count_analysis_jobs(
                     db,
                     user_id=user.id,
                     statuses={"queued", "running"}
                 ),
+                latest_redemption_at=latest_redemption.redeemed_at if latest_redemption is not None else None,
+                latest_redemption_summary=_build_redemption_summary(db, latest_redemption),
                 allowed_model_profiles=get_allowed_model_profiles(plan),
                 updated_at=user.updated_at
             )
@@ -594,6 +863,179 @@ def get_admin_overview(db: Session) -> AdminOverviewRecord:
         plan_distribution=distribution,
         recent_analyses=recent_analyses
     )
+
+
+def _apply_plan_change(
+    db: Session,
+    *,
+    user: UserModel,
+    organization: OrganizationModel,
+    plan,
+    billing_cycle: BillingCycle,
+    provider: str,
+    provider_reference: str,
+    amount: float,
+    metadata_payload: dict
+) -> tuple[UserModel, SubscriptionModel, BillingOrderModel]:
+    now = datetime.now(timezone.utc)
+    repository.update_user_plan(db, user, plan.id)
+    order = repository.create_order(
+        db,
+        BillingOrderModel(
+            id=f"order-{uuid4().hex[:10]}",
+            organization_id=organization.id,
+            user_id=user.id,
+            plan_id=plan.id,
+            billing_cycle=billing_cycle,
+            amount=amount,
+            currency="CNY",
+            status="paid",
+            provider=provider,
+            provider_reference=provider_reference,
+            metadata_payload=metadata_payload,
+            paid_at=now
+        )
+    )
+    subscription = repository.create_or_replace_subscription(
+        db,
+        SubscriptionModel(
+            id=f"subscription-{organization.id}",
+            organization_id=organization.id,
+            plan_id=plan.id,
+            billing_cycle=billing_cycle,
+            status="active",
+            amount=amount,
+            currency="CNY",
+            provider=provider,
+            cancel_at_period_end=False,
+            current_period_start=now,
+            current_period_end=now + timedelta(days=365 if billing_cycle == "yearly" else 30)
+        )
+    )
+    refreshed_user = repository.get_user(db, user.id)
+    if refreshed_user is None:
+        raise ValueError("用户不存在")
+    return refreshed_user, subscription, order
+
+
+def _build_quota_snapshot(user: UserModel, plan: PlanRecord) -> QuotaSnapshotRecord:
+    base_remaining = max(plan.monthly_analysis_quota - user.monthly_analysis_usage, 0)
+    bonus_remaining = max(user.bonus_quota_balance, 0)
+    return QuotaSnapshotRecord(
+        base_limit=plan.monthly_analysis_quota,
+        base_used=user.monthly_analysis_usage,
+        base_remaining=base_remaining,
+        bonus_remaining=bonus_remaining,
+        total_remaining=base_remaining + bonus_remaining
+    )
+
+
+def _serialize_redemption_code(
+    db: Session,
+    redemption_code: RedemptionCodeModel
+) -> RedemptionCodeRecord:
+    plan = repository.get_plan(db, redemption_code.plan_id) if redemption_code.plan_id else None
+    redeemed_user = (
+        repository.get_user(db, redemption_code.redeemed_by_user_id)
+        if redemption_code.redeemed_by_user_id
+        else None
+    )
+    return RedemptionCodeRecord(
+        id=redemption_code.id,
+        code=redemption_code.code,
+        status=redemption_code.status,
+        reward_type=redemption_code.reward_type,
+        plan_id=redemption_code.plan_id,
+        plan_name=plan.name if plan is not None else None,
+        billing_cycle=redemption_code.billing_cycle,
+        quota_amount=redemption_code.quota_amount,
+        expires_at=redemption_code.expires_at,
+        note=redemption_code.note,
+        created_by_user_id=redemption_code.created_by_user_id,
+        redeemed_by_user_id=redemption_code.redeemed_by_user_id,
+        redeemed_by_email=redeemed_user.email if redeemed_user is not None else None,
+        redeemed_at=redemption_code.redeemed_at,
+        created_at=redemption_code.created_at,
+        updated_at=redemption_code.updated_at
+    )
+
+
+def _generate_redemption_code(db: Session) -> str:
+    while True:
+        candidate = f"SO-{uuid4().hex[:4].upper()}-{uuid4().hex[:4].upper()}"
+        if repository.get_redemption_code_by_code(db, candidate) is None:
+            return candidate
+
+
+def _get_latest_redemption_for_user(db: Session, user_id: str) -> RedemptionCodeModel | None:
+    rows = repository.list_redemption_codes(db, redeemed_by_user_id=user_id, limit=1)
+    return rows[0] if rows else None
+
+
+def _build_redemption_summary(
+    db: Session,
+    redemption_code: RedemptionCodeModel | None
+) -> str | None:
+    if redemption_code is None:
+        return None
+    if redemption_code.reward_type == "plan":
+        plan = repository.get_plan(db, redemption_code.plan_id or "")
+        if plan is None:
+            return "套餐权益"
+        cycle_label = "年付" if redemption_code.billing_cycle == "yearly" else "月付"
+        return f"{plan.name}（{cycle_label}）"
+    if redemption_code.quota_amount:
+        return f"{redemption_code.quota_amount} 次额度"
+    return "额度权益"
+
+
+def _synchronize_redemption_status(
+    db: Session,
+    redemption_code: RedemptionCodeModel
+) -> RedemptionCodeModel:
+    expires_at = _coerce_utc(redemption_code.expires_at)
+    if (
+        redemption_code.status == "active"
+        and expires_at is not None
+        and expires_at <= datetime.now(timezone.utc)
+    ):
+        redemption_code.status = "expired"
+        redemption_code.updated_at = datetime.now(timezone.utc)
+        return repository.save_redemption_code(db, redemption_code)
+    return redemption_code
+
+
+def _create_redemption_audit(
+    db: Session,
+    *,
+    actor_user_id: str,
+    organization_id: str,
+    action: str,
+    summary: str,
+    entity_id: str,
+    metadata: dict
+) -> None:
+    repository.create_audit_log(
+        db,
+        AuditLogModel(
+            id=f"audit-{uuid4().hex[:10]}",
+            actor_user_id=actor_user_id,
+            organization_id=organization_id,
+            action=action,
+            entity_type="redemption_code",
+            entity_id=entity_id,
+            summary=summary,
+            metadata_payload=metadata
+        )
+    )
+
+
+def _coerce_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is not None:
+        return value.astimezone(timezone.utc)
+    return value.replace(tzinfo=timezone.utc)
 
 
 def _serialize_plan(plan_id: str, db: Session) -> PlanRecord:

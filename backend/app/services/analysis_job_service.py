@@ -23,6 +23,13 @@ _worker_lock = Lock()
 _shutdown_event = Event()
 
 
+class JobCapacityError(RuntimeError):
+    def __init__(self, message: str, *, code: str, meta: dict | None = None):
+        super().__init__(message)
+        self.code = code
+        self.meta = meta or {}
+
+
 def start_analysis_job_worker() -> None:
     global _worker_started
     with _worker_lock:
@@ -265,13 +272,20 @@ def _ensure_job_capacity(
 ) -> None:
     plan = repository.get_plan(db, user.plan_id)
     if plan is None:
-        raise RuntimeError("当前账号套餐不存在，无法执行推演。")
+        raise JobCapacityError("当前账号套餐不存在，无法执行推演。", code="plan_missing")
 
-    ensure_analysis_quota(db, user)
+    try:
+        ensure_analysis_quota(db, user)
+    except RuntimeError as exc:
+        raise JobCapacityError(str(exc), code="quota_exhausted") from exc
 
     allowed_profiles = get_allowed_model_profiles(plan)
     if request.model_profile not in allowed_profiles:
-        raise RuntimeError("当前套餐不支持所选模型档位，请升级到支持高级模型的套餐。")
+        raise JobCapacityError(
+            "当前套餐不支持所选模型档位，请升级到支持高级模型的套餐。",
+            code="model_profile_locked",
+            meta={"allowed_model_profiles": allowed_profiles, "requested_model_profile": request.model_profile}
+        )
 
     if check_active_jobs:
         active_jobs = repository.count_analysis_jobs(
@@ -280,7 +294,11 @@ def _ensure_job_capacity(
             statuses={"queued", "running"}
         )
         if active_jobs >= get_max_concurrent_jobs(plan):
-            raise RuntimeError("当前排队任务已达到套餐并发上限，请等待已有任务完成后再试。")
+            raise JobCapacityError(
+                "当前排队任务已达到套餐并发上限，请等待已有任务完成后再试。",
+                code="concurrency_limit",
+                meta={"active_jobs": active_jobs, "max_concurrent_jobs": get_max_concurrent_jobs(plan)}
+            )
 
 
 def _mark_job(

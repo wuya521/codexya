@@ -72,11 +72,11 @@ export function SiteHeader() {
   );
 
   return (
-    <header className="sticky top-0 z-30 border-b border-line/70 bg-[rgba(245,240,232,0.84)] backdrop-blur-xl">
+    <header className="sticky top-0 z-30 border-b border-line/70 bg-[rgba(252,254,255,0.84)] backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-4 lg:px-10">
         <div className="flex items-center justify-between gap-4">
           <Link href="/" className="flex min-w-0 items-center gap-3">
-            <span className="flex h-12 w-12 items-center justify-center rounded-[1.15rem] border border-white/50 bg-[linear-gradient(135deg,#102235,#21506f)] text-sm font-semibold text-white shadow-panel">
+            <span className="flex h-12 w-12 items-center justify-center rounded-[1.15rem] border border-white/80 bg-[linear-gradient(135deg,#0f2745,#1f6fff)] text-sm font-semibold text-white shadow-panel">
               SO
             </span>
             <div className="min-w-0">
@@ -84,7 +84,7 @@ export function SiteHeader() {
                 SUPER OS
               </p>
               <p className="truncate text-sm font-semibold text-ink">
-                超级OS 决策控制台
+                超级OS · 推演与路径控制台
               </p>
             </div>
           </Link>
@@ -103,13 +103,13 @@ export function SiteHeader() {
                   className="button-secondary"
                   onClick={handleLogout}
                 >
-                  退出
+                  退出登录
                 </button>
               </>
             ) : (
               <>
                 <Link href="/templates" className="button-ghost hidden sm:inline-flex">
-                  看模板
+                  模板库
                 </Link>
                 <Link href="/login" className="button-primary">
                   进入 Super OS
@@ -128,8 +128,8 @@ export function SiteHeader() {
                 href={link.href}
                 className={`whitespace-nowrap rounded-full px-4 py-2 transition ${
                   active
-                    ? "bg-[linear-gradient(135deg,#102235,#21506f)] text-white shadow-panel"
-                    : "border border-line bg-white/70 text-muted hover:border-brand/30 hover:text-ink"
+                    ? "bg-[linear-gradient(135deg,#0f2745,#1f6fff)] text-white shadow-panel"
+                    : "border border-line bg-white/85 text-muted hover:border-brand/30 hover:text-ink"
                 }`}
               >
                 {link.label}

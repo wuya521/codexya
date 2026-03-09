@@ -15,6 +15,7 @@ from app.models.db_models import (
     OrganizationMemberModel,
     OrganizationModel,
     PlanModel,
+    RedemptionCodeModel,
     SessionTokenModel,
     SubscriptionModel,
     TemplateModel,
@@ -92,6 +93,7 @@ class Repository:
             existing.role = user.role
             existing.plan_id = user.plan_id
             existing.monthly_analysis_usage = user.monthly_analysis_usage
+            existing.bonus_quota_balance = user.bonus_quota_balance
             existing.last_usage_reset_at = user.last_usage_reset_at
             existing.last_active_at = user.last_active_at
 
@@ -128,6 +130,24 @@ class Repository:
 
     def increment_user_usage(self, db: Session, user: UserModel) -> UserModel:
         user.monthly_analysis_usage += 1
+        db.commit()
+        db.refresh(user)
+        return user
+
+    def replace_user_bonus_quota(self, db: Session, user: UserModel, balance: int) -> UserModel:
+        user.bonus_quota_balance = balance
+        db.commit()
+        db.refresh(user)
+        return user
+
+    def increment_user_bonus_quota(self, db: Session, user: UserModel, amount: int) -> UserModel:
+        user.bonus_quota_balance += amount
+        db.commit()
+        db.refresh(user)
+        return user
+
+    def decrement_user_bonus_quota(self, db: Session, user: UserModel, amount: int = 1) -> UserModel:
+        user.bonus_quota_balance = max(user.bonus_quota_balance - amount, 0)
         db.commit()
         db.refresh(user)
         return user
@@ -432,6 +452,21 @@ class Repository:
         )
         db.commit()
 
+    def list_orders_by_provider_reference(
+        self,
+        db: Session,
+        provider_reference: str,
+        limit: int | None = None
+    ) -> list[BillingOrderModel]:
+        statement = (
+            select(BillingOrderModel)
+            .where(BillingOrderModel.provider_reference == provider_reference)
+            .order_by(BillingOrderModel.created_at.desc())
+        )
+        if limit is not None:
+            statement = statement.limit(limit)
+        return db.scalars(statement).all()
+
     def upsert_audit_logs(self, db: Session, audit_logs: Iterable[AuditLogModel]) -> None:
         for audit_log in audit_logs:
             existing = db.get(AuditLogModel, audit_log.id)
@@ -474,6 +509,53 @@ class Repository:
 
     def delete_audit_logs_by_organization(self, db: Session, organization_id: str) -> None:
         db.execute(delete(AuditLogModel).where(AuditLogModel.organization_id == organization_id))
+        db.commit()
+
+    def create_redemption_code(
+        self,
+        db: Session,
+        redemption_code: RedemptionCodeModel
+    ) -> RedemptionCodeModel:
+        db.add(redemption_code)
+        db.commit()
+        db.refresh(redemption_code)
+        return redemption_code
+
+    def save_redemption_code(
+        self,
+        db: Session,
+        redemption_code: RedemptionCodeModel
+    ) -> RedemptionCodeModel:
+        db.commit()
+        db.refresh(redemption_code)
+        return redemption_code
+
+    def get_redemption_code(self, db: Session, redemption_code_id: str) -> RedemptionCodeModel | None:
+        return db.get(RedemptionCodeModel, redemption_code_id)
+
+    def get_redemption_code_by_code(self, db: Session, code: str) -> RedemptionCodeModel | None:
+        statement = select(RedemptionCodeModel).where(RedemptionCodeModel.code == code.upper())
+        return db.scalar(statement)
+
+    def list_redemption_codes(
+        self,
+        db: Session,
+        *,
+        redeemed_by_user_id: str | None = None,
+        status: str | None = None,
+        limit: int | None = 100
+    ) -> list[RedemptionCodeModel]:
+        statement = select(RedemptionCodeModel).order_by(RedemptionCodeModel.created_at.desc())
+        if redeemed_by_user_id is not None:
+            statement = statement.where(RedemptionCodeModel.redeemed_by_user_id == redeemed_by_user_id)
+        if status is not None:
+            statement = statement.where(RedemptionCodeModel.status == status)
+        if limit is not None:
+            statement = statement.limit(limit)
+        return db.scalars(statement).all()
+
+    def delete_redemption_code(self, db: Session, redemption_code_id: str) -> None:
+        db.execute(delete(RedemptionCodeModel).where(RedemptionCodeModel.id == redemption_code_id))
         db.commit()
 
     def list_templates(self, db: Session) -> list[TemplateRecord]:

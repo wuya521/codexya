@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 
 import { switchPlan } from "@/lib/api";
+import { useToastStore } from "@/store/toast-store";
 import type { BillingCycle, SwitchPlanResponse } from "@/types/account";
 
 type PlanSwitcherProps = {
@@ -20,6 +21,7 @@ export function PlanSwitcher({
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const pushToast = useToastStore((state) => state.push);
 
   const isCurrentPlan = planId === currentPlanId;
 
@@ -34,6 +36,11 @@ export function PlanSwitcher({
     try {
       const response = await switchPlan(planId, billingCycle);
       setNotice(response.message);
+      pushToast({
+        tone: "success",
+        title: "套餐已更新",
+        description: response.message
+      });
       if (onSwitched) {
         startTransition(() => {
           onSwitched(response);

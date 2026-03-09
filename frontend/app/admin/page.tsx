@@ -7,7 +7,9 @@ import { PageStatus } from "@/components/page-status";
 import { PaginationControls } from "@/components/pagination-controls";
 import { SectionCard } from "@/components/section-card";
 import {
+  createAdminRedemptionCodes,
   createAdminUser,
+  deleteAdminRedemptionCode,
   deleteAdminUser,
   getAdminAudits,
   getAdminJobs,
@@ -15,8 +17,10 @@ import {
   getAdminOrganizations,
   getAdminOverview,
   getAdminPlans,
+  getAdminRedemptionCodes,
   getAdminUsers,
   getSession,
+  updateAdminRedemptionCode,
   updateAdminPlan,
   updateAdminUser
 } from "@/lib/api";
@@ -25,7 +29,9 @@ import {
   getJobStatusLabel,
   getModelProfileLabel
 } from "@/lib/display";
+import { useToastStore } from "@/store/toast-store";
 import type {
+  AdminRedemptionCodeCreateRequest,
   AdminOrganizationRecord,
   AdminOverviewRecord,
   AdminPlanRecord,
@@ -33,7 +39,8 @@ import type {
   AdminUserRecord,
   AuditLogRecord,
   BillingOrderRecord,
-  CurrentUserRecord
+  CurrentUserRecord,
+  RedemptionCodeRecord
 } from "@/types/account";
 import type { AnalysisJobRecord } from "@/types/analysis";
 
@@ -54,12 +61,31 @@ const initialCreateForm: AdminUserCreateRequest = {
   plan_id: "plan-free"
 };
 
+const initialRedemptionForm: AdminRedemptionCodeCreateRequest = {
+  reward_type: "plan",
+  plan_id: "plan-pro",
+  billing_cycle: "monthly",
+  quota_amount: 10,
+  quantity: 1,
+  note: ""
+};
+
+const redemptionStatusLabels: Record<"all" | RedemptionCodeRecord["status"], string> = {
+  all: "全部",
+  active: "可用",
+  redeemed: "已兑换",
+  disabled: "已停用",
+  expired: "已过期"
+};
+
 export default function AdminPage() {
+  const pushToast = useToastStore((state) => state.push);
   const [sessionUser, setSessionUser] = useState<CurrentUserRecord | null>(null);
   const [overview, setOverview] = useState<AdminOverviewRecord | null>(null);
   const [users, setUsers] = useState<AdminUserRecord[]>([]);
   const [organizations, setOrganizations] = useState<AdminOrganizationRecord[]>([]);
   const [plans, setPlans] = useState<AdminPlanRecord[]>([]);
+  const [redemptionCodes, setRedemptionCodes] = useState<RedemptionCodeRecord[]>([]);
   const [jobs, setJobs] = useState<AnalysisJobRecord[]>([]);
   const [orders, setOrders] = useState<BillingOrderRecord[]>([]);
   const [audits, setAudits] = useState<AuditLogRecord[]>([]);
@@ -70,9 +96,14 @@ export default function AdminPage() {
   const [deletingUserId, setDeletingUserId] = useState("");
   const [savingPlanId, setSavingPlanId] = useState("");
   const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [isCreatingRedemption, setIsCreatingRedemption] = useState(false);
+  const [savingRedemptionId, setSavingRedemptionId] = useState("");
+  const [deletingRedemptionId, setDeletingRedemptionId] = useState("");
   const [createForm, setCreateForm] = useState<AdminUserCreateRequest>(initialCreateForm);
+  const [redemptionForm, setRedemptionForm] = useState<AdminRedemptionCodeCreateRequest>(initialRedemptionForm);
   const [userQuery, setUserQuery] = useState("");
   const [userPage, setUserPage] = useState(1);
+  const [redemptionFilter, setRedemptionFilter] = useState<"all" | "active" | "redeemed" | "disabled" | "expired">("all");
 
   useEffect(() => {
     void refreshAll();
@@ -89,6 +120,13 @@ export default function AdminPage() {
         .includes(normalizedQuery)
     );
   }, [userQuery, users]);
+
+  const filteredRedemptionCodes = useMemo(() => {
+    if (redemptionFilter === "all") {
+      return redemptionCodes;
+    }
+    return redemptionCodes.filter((item) => item.status === redemptionFilter);
+  }, [redemptionCodes, redemptionFilter]);
 
   const totalUserPages = Math.max(1, Math.ceil(filteredUsers.length / userPageSize));
   const pagedUsers = filteredUsers.slice(
@@ -116,6 +154,7 @@ export default function AdminPage() {
         nextUsers,
         nextOrganizations,
         nextPlans,
+        nextRedemptionCodes,
         nextJobs,
         nextOrders,
         nextAudits
@@ -125,6 +164,7 @@ export default function AdminPage() {
         getAdminUsers(),
         getAdminOrganizations(),
         getAdminPlans(),
+        getAdminRedemptionCodes(),
         getAdminJobs(),
         getAdminOrders(),
         getAdminAudits()
@@ -134,6 +174,7 @@ export default function AdminPage() {
       setUsers(nextUsers);
       setOrganizations(nextOrganizations);
       setPlans(nextPlans);
+      setRedemptionCodes(nextRedemptionCodes);
       setJobs(nextJobs);
       setOrders(nextOrders);
       setAudits(nextAudits);
@@ -156,11 +197,17 @@ export default function AdminPage() {
         auth_status: payload.auth_status,
         organization_role: payload.organization_role ?? undefined,
         plan_id: payload.plan_id,
-        monthly_usage: payload.monthly_usage
+        monthly_usage: payload.monthly_usage,
+        bonus_quota_balance: payload.bonus_quota_balance
       });
       setUsers((current) => current.map((item) => (item.id === userId ? updated : item)));
       setOverview(await getAdminOverview());
       setNotice(`已更新账号 ${updated.email}`);
+      pushToast({
+        tone: "success",
+        title: "账号已保存",
+        description: updated.email
+      });
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "更新账号失败。");
     } finally {
@@ -178,6 +225,11 @@ export default function AdminPage() {
       setCreateForm(initialCreateForm);
       setOverview(await getAdminOverview());
       setNotice(`已创建账号 ${created.email}`);
+      pushToast({
+        tone: "success",
+        title: "新用户已创建",
+        description: created.email
+      });
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "创建账号失败。");
     } finally {
@@ -197,6 +249,11 @@ export default function AdminPage() {
       setUsers((current) => current.filter((item) => item.id !== user.id));
       setOverview(await getAdminOverview());
       setNotice(response.message);
+      pushToast({
+        tone: "success",
+        title: "账号已删除",
+        description: user.email
+      });
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "删除账号失败。");
     } finally {
@@ -222,10 +279,84 @@ export default function AdminPage() {
       setPlans((current) => current.map((item) => (item.id === planId ? updated : item)));
       setOverview(await getAdminOverview());
       setNotice(`已更新套餐 ${updated.name}`);
+      pushToast({
+        tone: "success",
+        title: "套餐已保存",
+        description: updated.name
+      });
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "更新套餐失败。");
     } finally {
       setSavingPlanId("");
+    }
+  }
+
+  async function handleRedemptionCreate() {
+    setIsCreatingRedemption(true);
+    setNotice("");
+    setError("");
+    try {
+      const created = await createAdminRedemptionCodes({
+        ...redemptionForm,
+        plan_id: redemptionForm.reward_type === "plan" ? redemptionForm.plan_id : undefined,
+        quota_amount: redemptionForm.reward_type === "quota" ? redemptionForm.quota_amount : undefined
+      });
+      setRedemptionCodes((current) => [...created, ...current]);
+      setRedemptionForm(initialRedemptionForm);
+      setNotice(`已创建 ${created.length} 个兑换码`);
+      pushToast({
+        tone: "success",
+        title: "兑换码已生成",
+        description: `本次生成 ${created.length} 个`
+      });
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "创建兑换码失败。");
+    } finally {
+      setIsCreatingRedemption(false);
+    }
+  }
+
+  async function handleRedemptionStatusChange(
+    redemptionCodeId: string,
+    status: RedemptionCodeRecord["status"]
+  ) {
+    setSavingRedemptionId(redemptionCodeId);
+    setError("");
+    try {
+      const updated = await updateAdminRedemptionCode(redemptionCodeId, { status });
+      setRedemptionCodes((current) =>
+        current.map((item) => (item.id === redemptionCodeId ? updated : item))
+      );
+      pushToast({
+        tone: "success",
+        title: "兑换码已更新",
+        description: `${updated.code} / ${updated.status}`
+      });
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "更新兑换码失败。");
+    } finally {
+      setSavingRedemptionId("");
+    }
+  }
+
+  async function handleRedemptionDelete(item: RedemptionCodeRecord) {
+    if (!window.confirm(`确认删除兑换码 ${item.code} 吗？`)) {
+      return;
+    }
+    setDeletingRedemptionId(item.id);
+    setError("");
+    try {
+      await deleteAdminRedemptionCode(item.id);
+      setRedemptionCodes((current) => current.filter((currentItem) => currentItem.id !== item.id));
+      pushToast({
+        tone: "success",
+        title: "兑换码已删除",
+        description: item.code
+      });
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "删除兑换码失败。");
+    } finally {
+      setDeletingRedemptionId("");
     }
   }
 
@@ -452,6 +583,192 @@ export default function AdminPage() {
       </CollapsiblePanel>
 
       <CollapsiblePanel
+        title="兑换码中心"
+        eyebrow="Redeem"
+        description="在这里批量生成套餐码和额度码，也可以停用或删除未使用兑换码。"
+        defaultOpen
+        summary={`${redemptionCodes.length} 个兑换码`}
+      >
+        <div className="grid gap-6 xl:grid-cols-[0.72fr_1.28fr]">
+          <SectionCard
+            title="生成兑换码"
+            eyebrow="Create"
+            description="套餐码适合开通权益，额度码适合补充推演次数。默认生成单次唯一兑换码。"
+            className="h-full"
+          >
+            <div className="grid gap-4">
+              <label className="space-y-2">
+                <span className="text-sm font-medium text-ink">兑换类型</span>
+                <select
+                  className="input-base"
+                  value={redemptionForm.reward_type}
+                  onChange={(event) =>
+                    setRedemptionForm((current) => ({
+                      ...current,
+                      reward_type: event.target.value as AdminRedemptionCodeCreateRequest["reward_type"]
+                    }))
+                  }
+                >
+                  <option value="plan">套餐码</option>
+                  <option value="quota">额度码</option>
+                </select>
+              </label>
+
+              {redemptionForm.reward_type === "plan" ? (
+                <>
+                  <label className="space-y-2">
+                    <span className="text-sm font-medium text-ink">目标套餐</span>
+                    <select
+                      className="input-base"
+                      value={redemptionForm.plan_id}
+                      onChange={(event) =>
+                        setRedemptionForm((current) => ({
+                          ...current,
+                          plan_id: event.target.value
+                        }))
+                      }
+                    >
+                      {plans.map((plan) => (
+                        <option key={plan.id} value={plan.id}>
+                          {plan.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-sm font-medium text-ink">计费周期</span>
+                    <select
+                      className="input-base"
+                      value={redemptionForm.billing_cycle}
+                      onChange={(event) =>
+                        setRedemptionForm((current) => ({
+                          ...current,
+                          billing_cycle: event.target.value as AdminRedemptionCodeCreateRequest["billing_cycle"]
+                        }))
+                      }
+                    >
+                      <option value="monthly">月付</option>
+                      <option value="yearly">年付</option>
+                    </select>
+                  </label>
+                </>
+              ) : (
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-ink">额度数量</span>
+                  <input
+                    className="input-base"
+                    type="number"
+                    min={1}
+                    value={redemptionForm.quota_amount ?? 10}
+                    onChange={(event) =>
+                      setRedemptionForm((current) => ({
+                        ...current,
+                        quota_amount: Number(event.target.value || 1)
+                      }))
+                    }
+                  />
+                </label>
+              )}
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-ink">生成数量</span>
+                  <input
+                    className="input-base"
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={redemptionForm.quantity ?? 1}
+                    onChange={(event) =>
+                      setRedemptionForm((current) => ({
+                        ...current,
+                        quantity: Number(event.target.value || 1)
+                      }))
+                    }
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium text-ink">过期时间</span>
+                  <input
+                    className="input-base"
+                    type="datetime-local"
+                    value={redemptionForm.expires_at ?? ""}
+                    onChange={(event) =>
+                      setRedemptionForm((current) => ({
+                        ...current,
+                        expires_at: event.target.value || undefined
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+
+              <label className="space-y-2">
+                <span className="text-sm font-medium text-ink">备注</span>
+                <input
+                  className="input-base"
+                  value={redemptionForm.note ?? ""}
+                  onChange={(event) =>
+                    setRedemptionForm((current) => ({
+                      ...current,
+                      note: event.target.value
+                    }))
+                  }
+                  placeholder="例如：春季活动、线下赠码、客服补偿"
+                />
+              </label>
+
+              <button
+                type="button"
+                className="button-primary w-full justify-center"
+                disabled={isCreatingRedemption}
+                onClick={() => void handleRedemptionCreate()}
+              >
+                {isCreatingRedemption ? "生成中..." : "生成兑换码"}
+              </button>
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="最近兑换码"
+            eyebrow="Code Pool"
+            description="默认展示最新生成的兑换码，可快速筛选状态并做停用或删除。"
+            className="h-full"
+          >
+            <div className="flex flex-wrap gap-2">
+              {(["all", "active", "redeemed", "disabled", "expired"] as const).map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  className={redemptionFilter === status ? "button-primary" : "button-secondary"}
+                  onClick={() => setRedemptionFilter(status)}
+                >
+                  {redemptionStatusLabels[status]}
+                </button>
+              ))}
+            </div>
+            <div className="mt-5 space-y-3">
+              {filteredRedemptionCodes.slice(0, 16).map((item) => (
+                <RedemptionCodeCard
+                  key={item.id}
+                  item={item}
+                  isSaving={savingRedemptionId === item.id}
+                  isDeleting={deletingRedemptionId === item.id}
+                  onStatusChange={handleRedemptionStatusChange}
+                  onDelete={handleRedemptionDelete}
+                />
+              ))}
+              {!filteredRedemptionCodes.length ? (
+                <div className="rounded-[1.2rem] border border-dashed border-line bg-canvas p-4 text-sm text-muted">
+                  当前筛选条件下没有兑换码。
+                </div>
+              ) : null}
+            </div>
+          </SectionCard>
+        </div>
+      </CollapsiblePanel>
+
+      <CollapsiblePanel
         title="任务与订单"
         eyebrow="Operations"
         description="只在需要时展开看排队和付费情况，避免后台首页被细节淹没。"
@@ -600,12 +917,30 @@ function EditableUserCard({
   onDelete: (user: AdminUserRecord) => Promise<void>;
 }) {
   const [draft, setDraft] = useState<AdminUserRecord>(user);
+  const [baseRemainingInput, setBaseRemainingInput] = useState(user.quota_snapshot.base_remaining);
 
   useEffect(() => {
     setDraft(user);
+    setBaseRemainingInput(user.quota_snapshot.base_remaining);
   }, [user]);
 
   const isFounder = user.id === "demo-admin";
+  const selectedPlan = plans.find((item) => item.id === draft.plan_id);
+  const selectedBaseLimit = selectedPlan?.monthly_analysis_quota ?? user.monthly_limit;
+  const normalizedBaseRemaining = Math.min(
+    Math.max(baseRemainingInput, 0),
+    Math.max(selectedBaseLimit, 0)
+  );
+  const previewBonusRemaining = Math.max(draft.bonus_quota_balance, 0);
+  const previewTotalRemaining = normalizedBaseRemaining + previewBonusRemaining;
+  const previewProfiles =
+    selectedPlan?.allowed_model_profiles.length
+      ? selectedPlan.allowed_model_profiles
+      : user.allowed_model_profiles;
+
+  useEffect(() => {
+    setBaseRemainingInput((current) => Math.min(current, Math.max(selectedBaseLimit, 0)));
+  }, [selectedBaseLimit]);
 
   return (
     <div className="rounded-[1.45rem] border border-line bg-canvas p-5">
@@ -697,16 +1032,30 @@ function EditableUserCard({
           </select>
         </label>
         <label className="space-y-2">
-          <span className="text-xs tracking-[0.16em] text-muted">已用额度</span>
+          <span className="text-xs tracking-[0.16em] text-muted">基础剩余额度</span>
           <input
             className="input-base"
             type="number"
             min={0}
-            value={draft.monthly_usage}
+            max={selectedBaseLimit}
+            value={baseRemainingInput}
+            onChange={(event) => setBaseRemainingInput(Number(event.target.value || 0))}
+          />
+          <p className="text-xs leading-5 text-muted">
+            设为 `0` 会耗尽本月基础额度；若额外额度余额也为 `0`，新推演会被直接阻断。
+          </p>
+        </label>
+        <label className="space-y-2">
+          <span className="text-xs tracking-[0.16em] text-muted">额外额度余额</span>
+          <input
+            className="input-base"
+            type="number"
+            min={0}
+            value={draft.bonus_quota_balance}
             onChange={(event) =>
               setDraft((current) => ({
                 ...current,
-                monthly_usage: Number(event.target.value || 0)
+                bonus_quota_balance: Number(event.target.value || 0)
               }))
             }
           />
@@ -715,10 +1064,14 @@ function EditableUserCard({
 
       <div className="mt-4 rounded-[1.1rem] border border-line bg-panel/70 p-4 text-sm leading-6 text-muted">
         <p>活动任务：{user.active_job_count}</p>
-        <p className="mt-2">剩余额度：{user.remaining_quota}</p>
+        <p className="mt-2">预览剩余额度：{previewTotalRemaining}</p>
+        <p className="mt-2">基础额度：{normalizedBaseRemaining} / {selectedBaseLimit}</p>
+        <p className="mt-2">额外额度：{previewBonusRemaining}</p>
+        <p className="mt-2">当前套餐：{selectedPlan?.name ?? user.plan_name}</p>
         <p className="mt-2">空间：{user.organization_name}</p>
+        <p className="mt-2">最近兑换：{user.latest_redemption_summary ?? "暂无"}</p>
         <p className="mt-2">
-          可用模型：{user.allowed_model_profiles.map((item) => getModelProfileLabel(item)).join(" / ")}
+          可用模型：{previewProfiles.map((item) => getModelProfileLabel(item)).join(" / ")}
         </p>
       </div>
 
@@ -727,7 +1080,12 @@ function EditableUserCard({
           type="button"
           className="button-primary"
           disabled={isSaving}
-          onClick={() => void onSave(user.id, draft)}
+          onClick={() =>
+            void onSave(user.id, {
+              ...draft,
+              monthly_usage: Math.max(selectedBaseLimit - normalizedBaseRemaining, 0)
+            })
+          }
         >
           {isSaving ? "保存中..." : "保存"}
         </button>
@@ -883,6 +1241,88 @@ function EditablePlanCard({
       >
         {isSaving ? "保存中..." : "保存套餐"}
       </button>
+    </div>
+  );
+}
+
+function RedemptionCodeCard({
+  item,
+  isSaving,
+  isDeleting,
+  onStatusChange,
+  onDelete
+}: {
+  item: RedemptionCodeRecord;
+  isSaving: boolean;
+  isDeleting: boolean;
+  onStatusChange: (id: string, status: RedemptionCodeRecord["status"]) => Promise<void>;
+  onDelete: (item: RedemptionCodeRecord) => Promise<void>;
+}) {
+  const canDisable = item.status === "active";
+  const canReactivate = item.status === "disabled";
+  const statusLabel = redemptionStatusLabels[item.status];
+
+  return (
+    <div className="rounded-[1.25rem] border border-line bg-canvas p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="tech-pill">{item.reward_type === "plan" ? "套餐码" : "额度码"}</span>
+            <p className="text-base font-semibold text-ink">{item.code}</p>
+          </div>
+          <p className="mt-2 text-sm text-muted">
+            {item.reward_type === "plan"
+              ? `${item.plan_name ?? "套餐权益"} / ${item.billing_cycle === "yearly" ? "年付" : "月付"}`
+              : `${item.quota_amount ?? 0} 次额度`}
+          </p>
+          <p className="mt-2 text-xs text-muted">
+            状态：{statusLabel} {item.redeemed_by_email ? ` / ${item.redeemed_by_email}` : ""}
+          </p>
+        </div>
+        <div className="text-right text-xs text-muted">
+          <p>创建于 {formatDateTime(item.created_at)}</p>
+          <p className="mt-1">
+            {item.expires_at ? `过期于 ${formatDateTime(item.expires_at)}` : "长期有效"}
+          </p>
+        </div>
+      </div>
+
+      {item.note ? (
+        <p className="mt-3 rounded-[1rem] border border-line bg-white/90 px-3 py-2 text-sm leading-6 text-muted">
+          {item.note}
+        </p>
+      ) : null}
+
+      <div className="mt-4 flex flex-wrap gap-3">
+        {canDisable ? (
+          <button
+            type="button"
+            className="button-secondary"
+            disabled={isSaving}
+            onClick={() => void onStatusChange(item.id, "disabled")}
+          >
+            {isSaving ? "处理中..." : "停用"}
+          </button>
+        ) : null}
+        {canReactivate ? (
+          <button
+            type="button"
+            className="button-secondary"
+            disabled={isSaving}
+            onClick={() => void onStatusChange(item.id, "active")}
+          >
+            {isSaving ? "处理中..." : "重新启用"}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="button-danger"
+          disabled={isDeleting || item.status === "redeemed"}
+          onClick={() => void onDelete(item)}
+        >
+          {isDeleting ? "删除中..." : item.status === "redeemed" ? "已兑换不可删" : "删除"}
+        </button>
+      </div>
     </div>
   );
 }

@@ -10,6 +10,7 @@ from app.services.analysis_job_service import (
     enqueue_analysis_job,
     enqueue_rerun_job,
     get_analysis_job_for_user,
+    JobCapacityError,
     list_user_analysis_jobs,
     stream_analysis_job_events
 )
@@ -25,6 +26,11 @@ def post_analysis_job(
 ):
     try:
         return enqueue_analysis_job(db, user, request)
+    except JobCapacityError as exc:
+        raise HTTPException(
+            status_code=402,
+            detail={"message": str(exc), "code": exc.code, "meta": exc.meta}
+        ) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=402, detail=str(exc)) from exc
     except ValueError as exc:
@@ -39,6 +45,11 @@ def post_rerun_job(
 ):
     try:
         return enqueue_rerun_job(db, user, analysis_id)
+    except JobCapacityError as exc:
+        raise HTTPException(
+            status_code=402,
+            detail={"message": str(exc), "code": exc.code, "meta": exc.meta}
+        ) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=402, detail=str(exc)) from exc
     except ValueError as exc:

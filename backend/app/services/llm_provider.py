@@ -2,8 +2,6 @@ import json
 from abc import ABC, abstractmethod
 from json import JSONDecodeError
 
-from openai import OpenAI
-
 from app.core.config import settings
 from app.schemas.analysis import AnalysisRequest, GeneratedAnalysisPayload, ModelProfile
 from app.services.analysis_generation import build_mock_generated_payload
@@ -36,7 +34,8 @@ class OpenAIResponsesProvider(LLMProvider):
     provider_name = "openai"
 
     def __init__(self, api_key: str) -> None:
-        self.client = OpenAI(
+        openai_client_class = _get_openai_client_class()
+        self.client = openai_client_class(
             api_key=api_key,
             timeout=settings.llm_request_timeout_seconds
         )
@@ -66,7 +65,8 @@ class DeepSeekChatProvider(LLMProvider):
     provider_name = "deepseek"
 
     def __init__(self, api_key: str, base_url: str) -> None:
-        self.client = OpenAI(
+        openai_client_class = _get_openai_client_class()
+        self.client = openai_client_class(
             api_key=api_key,
             base_url=base_url,
             timeout=settings.llm_request_timeout_seconds
@@ -130,6 +130,16 @@ def preview_provider_selection(profile: ModelProfile) -> tuple[str, str]:
     if provider_name == "mock":
         return "mock", "mock-world-inference-v1"
     return provider_name, "unknown"
+
+
+def _get_openai_client_class():
+    try:
+        from openai import OpenAI
+    except ModuleNotFoundError as exc:
+        raise LLMConfigurationError(
+            "The 'openai' package is required for the configured LLM provider. Install backend dependencies before starting the API."
+        ) from exc
+    return OpenAI
 
 
 def get_llm_provider() -> LLMProvider:

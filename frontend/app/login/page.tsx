@@ -90,14 +90,17 @@ export default function LoginPage() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1.08fr_0.92fr]">
-      <section className="rounded-[2rem] border border-line bg-[linear-gradient(135deg,rgba(10,28,45,0.98),rgba(17,45,66,0.94))] p-8 text-slate-100 shadow-panel">
-        <p className="text-xs tracking-[0.3em] text-slate-300">WELCOME RITUAL</p>
-        <h1 className="display-title mt-5 text-4xl font-semibold leading-tight">
+      <section className="rounded-[2rem] border border-line bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(239,247,255,0.9))] p-8 shadow-panel">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="tech-pill">WELCOME RITUAL</span>
+          <span className="tech-pill">SUPER OS</span>
+        </div>
+        <h1 className="display-title mt-5 text-4xl font-semibold leading-tight text-ink">
           欢迎回到 Super OS。
           <br />
           把注意力放回最重要的那件事。
         </h1>
-        <p className="mt-5 max-w-2xl text-base leading-7 text-slate-300">
+        <p className="mt-5 max-w-2xl text-base leading-7 text-muted">
           登录后你会进入自己的控制台，继续发起推演、追踪任务、查看结果并选择合适的套餐。
         </p>
 
@@ -108,12 +111,12 @@ export default function LoginPage() {
         </div>
 
         {founderUser ? (
-          <div className="mt-8 rounded-[1.5rem] border border-white/10 bg-white/6 p-5">
+          <div className="mt-8 rounded-[1.5rem] border border-line bg-white/88 p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <p className="text-sm font-semibold text-white">{founderUser.name}</p>
-                <p className="mt-1 text-sm text-slate-300">{founderUser.email}</p>
-                <p className="mt-2 text-xs text-slate-400">
+                <p className="text-sm font-semibold text-ink">{founderUser.name}</p>
+                <p className="mt-1 text-sm text-muted">{founderUser.email}</p>
+                <p className="mt-2 text-xs text-muted">
                   演示密码：{founderUser.password_hint}
                 </p>
               </div>
@@ -228,9 +231,9 @@ export default function LoginPage() {
 
 function RitualCard({ title, detail }: { title: string; detail: string }) {
   return (
-    <div className="rounded-[1.25rem] border border-white/10 bg-white/6 px-4 py-4">
-      <p className="text-sm font-semibold text-white">{title}</p>
-      <p className="mt-2 text-sm leading-6 text-slate-300">{detail}</p>
+    <div className="rounded-[1.25rem] border border-line bg-white/88 px-4 py-4">
+      <p className="text-sm font-semibold text-ink">{title}</p>
+      <p className="mt-2 text-sm leading-6 text-muted">{detail}</p>
     </div>
   );
 }

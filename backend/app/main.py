@@ -12,6 +12,7 @@ from app.api.routes_billing import router as billing_router
 from app.api.routes_system import router as system_router
 from app.api.routes_templates import router as templates_router
 from app.core.config import settings
+from app.db.runtime_schema import ensure_runtime_schema
 from app.db.session import SessionLocal, engine
 from app.models.db_models import Base
 from app.services.analysis_job_service import start_analysis_job_worker, stop_analysis_job_worker
@@ -21,6 +22,7 @@ from app.services.analysis_service import bootstrap_data
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
+    ensure_runtime_schema(engine)
     with SessionLocal() as session:
         bootstrap_data(session)
     start_analysis_job_worker()

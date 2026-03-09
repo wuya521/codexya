@@ -39,6 +39,7 @@ class UserModel(Base):
     role: Mapped[str] = mapped_column(String(32), index=True)
     plan_id: Mapped[str] = mapped_column(String(128), index=True)
     monthly_analysis_usage: Mapped[int] = mapped_column(Integer(), default=0)
+    bonus_quota_balance: Mapped[int] = mapped_column(Integer(), default=0)
     last_usage_reset_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
@@ -124,6 +125,25 @@ class BillingOrderModel(Base):
     provider_reference: Mapped[str] = mapped_column(String(255), default="")
     metadata_payload: Mapped[dict] = mapped_column(JSON(), default=dict)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+class RedemptionCodeModel(Base):
+    __tablename__ = "redemption_codes"
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    code: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    reward_type: Mapped[str] = mapped_column(String(32), index=True)
+    plan_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    billing_cycle: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    quota_amount: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    note: Mapped[str] = mapped_column(Text(), default="")
+    created_by_user_id: Mapped[str] = mapped_column(String(128), index=True)
+    redeemed_by_user_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    redeemed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 

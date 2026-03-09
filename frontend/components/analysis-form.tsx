@@ -4,11 +4,13 @@ import Link from "next/link";
 import { startTransition, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
+import { ActionDialog } from "@/components/action-dialog";
 import { SectionCard } from "@/components/section-card";
 import { TagEditor } from "@/components/tag-editor";
-import { createAnalysisJob, getTemplates } from "@/lib/api";
+import { ApiError, createAnalysisJob, getTemplates } from "@/lib/api";
 import { getModeLabel, getOptimizationLabel } from "@/lib/display";
 import { useDraftAnalysisStore } from "@/store/draft-analysis-store";
+import { useToastStore } from "@/store/toast-store";
 import type {
   AnalysisMode,
   AnalysisRequest,
@@ -62,6 +64,7 @@ const queueSteps = [
 
 export function AnalysisForm({ mode }: AnalysisFormProps) {
   const router = useRouter();
+  const pushToast = useToastStore((state) => state.push);
   const searchParams = useSearchParams();
   const templateId = searchParams.get("template");
   const draft = useDraftAnalysisStore((state) => state.drafts[mode]);
@@ -72,6 +75,11 @@ export function AnalysisForm({ mode }: AnalysisFormProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const [template, setTemplate] = useState<TemplateRecord | null>(null);
   const [appliedTemplateId, setAppliedTemplateId] = useState("");
+  const [blockingDialog, setBlockingDialog] = useState<{
+    title: string;
+    description: string;
+    details: string[];
+  } | null>(null);
 
   const setField = <K extends keyof AnalysisRequest>(
     field: K,
@@ -156,13 +164,52 @@ export function AnalysisForm({ mode }: AnalysisFormProps) {
 
     try {
       const job = await createAnalysisJob(draft);
+      pushToast({
+        tone: "success",
+        title: "任务已进入队列",
+        description: "正在跳转到实时进度页。"
+      });
       startTransition(() => {
         router.push(`/jobs/${job.id}`);
       });
     } catch (submitError) {
-      setError(
-        submitError instanceof Error ? submitError.message : "创建推演任务失败。"
-      );
+      if (submitError instanceof ApiError) {
+        if (submitError.code === "quota_exhausted") {
+          setBlockingDialog({
+            title: "当前额度已经用完",
+            description: "本次推演不会继续提交。你可以直接购买更高套餐，或者先用兑换码补充额度。",
+            details: [
+              "主额度用完后，系统才会继续使用兑换得到的额外额度。",
+              "购买套餐适合长期高频使用，兑换码适合活动发放或临时补充。"
+            ]
+          });
+          return;
+        }
+        if (submitError.code === "model_profile_locked") {
+          setBlockingDialog({
+            title: "当前套餐还不支持这个模型档位",
+            description: "你选择的模型档位超出了当前套餐权限。升级套餐后可以继续提交。",
+            details: [
+              "建议先切回“平衡”档位做首轮判断。",
+              "如果你需要深度推理，建议升级到支持高级模型的套餐。"
+            ]
+          });
+          return;
+        }
+        if (submitError.code === "concurrency_limit") {
+          setBlockingDialog({
+            title: "当前排队任务已经达到上限",
+            description: "先等待已有任务完成，或者升级到更高并发的套餐。",
+            details: [
+              "队列采用真实异步任务，达到并发上限时会阻止继续堆积任务。",
+              "升级套餐后会解锁更高并发上限。"
+            ]
+          });
+          return;
+        }
+      }
+
+      setError(submitError instanceof Error ? submitError.message : "创建推演任务失败。");
     } finally {
       if (timer) {
         window.clearInterval(timer);
@@ -174,6 +221,34 @@ export function AnalysisForm({ mode }: AnalysisFormProps) {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1.45fr_0.75fr]">
+      <ActionDialog
+        open={blockingDialog !== null}
+        eyebrow="额度与权限"
+        title={blockingDialog?.title ?? ""}
+        description={blockingDialog?.description ?? ""}
+        onClose={() => setBlockingDialog(null)}
+        actions={
+          <>
+            <Link href="/account" className="button-primary">
+              去购买套餐
+            </Link>
+            <Link href="/account#redeem-center" className="button-secondary">
+              去兑换码中心
+            </Link>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          {blockingDialog?.details.map((item) => (
+            <div
+              key={item}
+              className="rounded-[1.1rem] border border-line bg-canvas px-4 py-3 text-sm leading-6 text-muted"
+            >
+              {item}
+            </div>
+          ))}
+        </div>
+      </ActionDialog>
       <div className="space-y-6">
         {template ? (
           <div className="rounded-[1.5rem] border border-brand/20 bg-brand/10 p-5">

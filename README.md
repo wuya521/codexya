@@ -1,49 +1,57 @@
 # Super OS 超级OS
 
-一个面向真实业务决策的推演与路径规划平台。项目目标不是做聊天式演示，而是把“问题输入 -> 结构化推演 -> 异步任务 -> 结果复盘 -> 套餐购买 -> 后台管理”做成可以上线交付的正式产品。
+一个面向真实决策场景的推演与路径规划系统。
 
-## 项目定位
+它不是聊天演示页，而是把“输入问题 -> 提交异步任务 -> 生成结构化结果 -> 购买套餐 -> 兑换码补量 -> 后台运营管理”做成可落地的产品骨架。
 
-这个项目适合以下场景：
+## 当前状态
 
-- 战略推演：判断一个业务、产品、市场动作接下来大概率如何演化
-- 路径规划：围绕一个明确目标，给出最快、最稳、最优的执行路线
-- 团队协作：系统内部保留组织能力，但前台默认聚焦个人控制台和购买流程
-- 商业化运营：支持账号体系、套餐、额度、后台管理和任务追踪
+当前仓库已经包含这些可运行能力：
 
-当前版本已经是前后端分离的可运行系统：
+- 用户注册、登录、会话管理
+- 套餐购买与套餐切换
+- 单次兑换码体系
+- 额外额度余额体系
+- 异步任务队列、轮询与 SSE 推送
+- 额度不足 / 模型权限不足阻断
+- 全局 Toast 成功反馈
+- 运营后台用户 CRUD
+- 套餐额度与模型权限维护
+- 兑换码后台生成、停用、删除
+- 推演结果结构化展示
+- 宝塔部署样例
 
-- 前端：Next.js 14 + React 18
-- 后端：FastAPI + SQLAlchemy
-- 数据库：SQLite 本地开发，PostgreSQL 生产推荐
-- 模型接入：DeepSeek / OpenAI
-- 推演模式：异步任务队列 + 轮询 + SSE 推送
+## 产品结构
 
-## 核心能力
+前端：
+- Next.js 14
+- React 18
 
-- 用户注册、登录、会话与后台可管账号
-- 控制台、会员中心、后台管理
-- 走向预测与最佳路径两种核心推演模式
-- 模板库直接套用到推演表单
-- 异步任务队列，避免长推理阻塞页面
-- 推演结果支持因果图谱、情景分支、路径奖励模拟、风险与观察信号
-- 重演机制支持版本对比、差异说明和来源追踪
-- 后台支持用户 CRUD、套餐额度管理、折叠运营视图和订单追踪
+后端：
+- FastAPI
+- SQLAlchemy
+
+模型：
+- DeepSeek
+- OpenAI
+
+数据库：
+- 本地开发默认 SQLite
+- 生产建议 PostgreSQL
 
 ## 页面说明
 
-本地启动后主要入口如下：
+本地启动后主要入口：
 
 - 首页：`http://127.0.0.1:3000`
 - 登录：`http://127.0.0.1:3000/login`
 - 走向预测：`http://127.0.0.1:3000/forecast`
 - 路径规划：`http://127.0.0.1:3000/pathfinder`
 - 模板库：`http://127.0.0.1:3000/templates`
-- 历史记录：`http://127.0.0.1:3000/history`
+- 历史推演：`http://127.0.0.1:3000/history`
 - 控制台：`http://127.0.0.1:3000/workspace`
-- 购买套餐：`http://127.0.0.1:3000/account`
-- 后台：`http://127.0.0.1:3000/admin`
-- 设置页：`http://127.0.0.1:3000/settings`
+- 套餐与兑换：`http://127.0.0.1:3000/account`
+- 运营后台：`http://127.0.0.1:3000/admin`
 - API 文档：`http://127.0.0.1:8000/docs`
 
 本地默认管理员账号：
@@ -51,121 +59,318 @@
 - 邮箱：`founder@inference.local`
 - 密码：`Demo12345!`
 
-当前仅保留这一组创始者演示入口，避免多演示账号干扰产品体验。
-
-仅用于本地演示，正式环境请关闭 demo 登录并重置所有默认账号。
-
-## 项目结构
-
-```text
-codexya/
-├─ frontend/                # Next.js 前端
-├─ backend/                 # FastAPI 后端
-├─ docs/                    # 文档
-├─ deploy/baota/            # 宝塔部署样例
-├─ runtime/                 # 本地运行时数据
-└─ docker-compose.yml       # PostgreSQL 本地容器
-```
-
 ## 推演流程原理
 
-### 1. 输入阶段
+### 1. 用户输入
 
-用户在 `走向预测` 或 `最佳路径` 页面输入：
+用户在“走向预测”或“路径规划”页面输入：
 
-- 目标问题
+- 标题
+- 核心问题
+- 时间范围
 - 已知事实
 - 约束条件
 - 不确定项
 - 相关方
-- 时间范围
-- 优化目标
+- 目标结果
+- 已尝试动作
+- 模型档位
 
-### 2. 任务提交阶段
+### 2. 创建异步任务
 
-前端不会直接卡住等待完整模型输出，而是：
+前端不会一直卡在提交按钮上等待模型返回。
 
-1. 提交分析任务到后端
-2. 后端创建 `job`
-3. 前端进入任务页展示进度
-4. 页面通过轮询和 SSE 获取状态更新
+提交时会：
 
-这样做的原因是模型推理通常耗时较长，异步任务能保证页面响应、错误反馈和重试体验更稳定。
+1. 调用 `POST /api/analysis-jobs`
+2. 后端先校验套餐、额度、模型权限、并发上限
+3. 校验通过后创建 `job`
+4. 前端跳转任务页
+5. 前端通过轮询和 SSE 订阅任务状态
 
-### 3. 模型推理阶段
+这样做的好处是：
 
-后端会：
+- 大模型慢时页面依旧流畅
+- 可以展示排队、运行、完成、失败
+- 更适合正式产品的任务中心体验
 
-1. 根据模式选择对应 prompt 结构
-2. 根据套餐和设置选择模型
-3. 调用 DeepSeek 或 OpenAI
-4. 将模型输出归一化成稳定结构
-5. 保存分析结果和任务耗时
+### 3. 模型推理
 
-### 4. 结果展示阶段
+后端会根据当前套餐允许的模型档位，选择对应 provider 和模型。
+
+当前支持：
+
+- `LLM_PROVIDER=deepseek`
+- `LLM_PROVIDER=openai`
+
+模型返回后会被归一化成固定结构，主要包括：
+
+- 问题定义
+- 当前状态
+- 关键变量
+- 因果边
+- 情景分支
+- 推荐路径
+- 风险
+- 观察信号
+- 下一步动作
+
+### 4. 结果展示
 
 结果页会展示：
 
-- 问题定义和当前态势
-- 关键变量与因果图谱
-- 情景分支与概率判断
-- 推荐路线和奖励模拟
-- 风险、观察信号、下一步动作
-- 如为重演，则附带版本差异说明
+- 主结论和置信度
+- 因果关系图谱
+- 情景概率分支
+- 推荐执行路径
+- 风险与监控信号
+- 下一步动作
+- 重演版本差异说明
 
-## 模型与额度说明
+## 套餐与额度规则
 
-项目已支持模型切换，推荐策略如下：
+当前系统的额度规则已经做成正式逻辑，不再是 mock。
 
-- 普通套餐：DeepSeek 标准模型
-- 高级套餐：DeepSeek 高阶模型或 OpenAI 更强模型
-- 管理后台：按套餐控制模型白名单、并发数、任务额度
+### 基础额度
 
-生产环境建议：
+每个套餐有自己的月度基础额度：
 
-- `LLM_FALLBACK_TO_MOCK=false`
-- 未配置模型密钥时直接报错，不要静默退回 mock
-- 将高成本模型只开放给高阶套餐
+- 免费版：10 次
+- 专业版：80 次
+- VIP 深度版：300 次
+- 企业版：2000 次
 
-## 本地开发启动
+### 额外额度
 
-### 1. 启动 PostgreSQL
+兑换“额度码”后，会给用户增加 `bonus_quota_balance`。
 
-如果你想用 PostgreSQL 进行本地联调：
+这部分额度：
 
-```bash
-docker compose up -d postgres
+- 独立于月度基础额度
+- 不会在月初自动恢复
+- 不会被月度重置清空
+- 会一直保留到消费完
+
+### 扣减顺序
+
+推演时系统按这个顺序扣减：
+
+1. 先扣套餐月度基础额度
+2. 基础额度用完后，再扣兑换得到的额外额度
+
+### 月度重置
+
+每月只会重置：
+
+- `monthly_analysis_usage`
+
+不会重置：
+
+- `bonus_quota_balance`
+
+## 兑换码体系
+
+### 支持的兑换码类型
+
+当前支持两类兑换码：
+
+- 套餐码
+- 额度码
+
+### 单次码规则
+
+兑换码是“单次唯一兑换码”，每个码全局只能成功兑换一次。
+
+不支持：
+
+- 通用活动码
+- 每人限领 N 次
+- 无限复用码
+
+### 套餐码
+
+套餐码兑换后会：
+
+- 切换当前用户主空间订阅到目标套餐
+- 按兑换码指定的月付 / 年付创建新周期
+- 自动生成一笔 `provider=redeem_code`、`amount=0`、`status=paid` 的订单
+- 写入审计日志
+
+### 额度码
+
+额度码兑换后会：
+
+- 增加当前用户 `bonus_quota_balance`
+- 更新账户页额度概览
+- 写入审计日志
+
+### 用户兑换接口
+
+- `POST /api/billing/redeem-code`
+
+请求：
+
+```json
+{
+  "code": "SO-AB12-CD34"
+}
 ```
 
-### 2. 配置后端
+返回：
 
-进入 [backend/.env.example](/E:/codexya/backend/.env.example) 对应的变量，复制为 `backend/.env`。
+- 兑换结果
+- 最新用户信息
+- 最新订阅
+- 可选订单
+- 当前额度快照
+- 兑换码记录
 
-推荐至少设置：
+### 后台管理接口
+
+- `GET /api/admin/redemption-codes`
+- `POST /api/admin/redemption-codes`
+- `PATCH /api/admin/redemption-codes/{id}`
+- `DELETE /api/admin/redemption-codes/{id}`
+
+后台支持：
+
+- 生成单个兑换码
+- 批量生成唯一单次码
+- 停用未使用兑换码
+- 删除未使用兑换码
+- 查看已兑换记录
+
+## 前端体验升级点
+
+### 全局 Toast
+
+成功操作统一会在右上角弹出可见 Toast，包括：
+
+- 创建用户
+- 保存用户
+- 删除用户
+- 保存套餐
+- 生成兑换码
+- 更新兑换码
+- 删除兑换码
+- 切换套餐
+- 兑换成功
+- 提交任务成功
+
+### 阻断弹窗
+
+当用户提交推演但条件不满足时，系统不再只显示一行错误字。
+
+现在会统一弹出白色科技风阻断弹窗，覆盖这些场景：
+
+- 套餐额度耗尽
+- 所选模型档位不在当前套餐权限内
+- 并发任务达到上限
+
+弹窗会给出：
+
+- 当前问题原因
+- 跳转购买套餐入口
+- 跳转兑换中心入口
+
+## 后台能力
+
+运营后台当前以“少而准”为原则，默认折叠低频区块。
+
+### 账户管理
+
+支持：
+
+- 创建用户
+- 编辑用户姓名 / 公司 / 角色 / 登录状态
+- 编辑套餐
+- 编辑月度已用额度
+- 编辑额外额度余额
+- 删除非创始者账号
+
+### 套餐策略
+
+支持：
+
+- 月费
+- 年费
+- 月度额度
+- 导出权限
+- 高级模型开关
+- 团队席位
+
+### 兑换码中心
+
+支持：
+
+- 创建套餐码
+- 创建额度码
+- 批量生成
+- 状态筛选
+- 停用
+- 恢复启用
+- 删除未兑换码
+
+### 其余后台模块
+
+为了避免首页信息过载，以下模块放在折叠区：
+
+- 任务与订单
+- 最近推演
+- 系统结构
+
+## 模型配置
+
+后端配置文件位于：
+
+- `backend/.env`
+- `backend/.env.example`
+
+关键变量：
 
 ```env
-APP_NAME=First Principles Strategy OS API
 DATABASE_URL=sqlite:///./world_inference.db
 LLM_PROVIDER=deepseek
 LLM_FALLBACK_TO_MOCK=false
+
 DEEPSEEK_API_KEY=your_real_key
-DEEPSEEK_MODEL=deepseek-chat
+DEEPSEEK_CHAT_MODEL=deepseek-chat
+DEEPSEEK_REASONING_MODEL=deepseek-reasoner
 DEEPSEEK_BASE_URL=https://api.deepseek.com
-APP_SECRET=replace_with_a_real_secret
+
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-5-mini
+OPENAI_REASONING_MODEL=gpt-5
+
+APP_SECRET=replace_me
 ENABLE_DEMO_AUTH=false
 ```
 
-安装依赖并启动后端：
+建议：
+
+- 生产环境始终关闭 `LLM_FALLBACK_TO_MOCK`
+- 没有真实 Key 时直接报错，不要静默回退
+- 高成本模型只开放给高阶套餐
+
+## 本地启动
+
+### 1. 安装后端依赖
 
 ```bash
 cd backend
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
+```
+
+### 2. 启动后端
+
+```bash
+cd backend
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-### 3. 配置前端
+### 3. 启动前端
 
 创建 `frontend/.env.local`：
 
@@ -173,7 +378,7 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000
 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
 ```
 
-安装依赖并启动前端：
+然后：
 
 ```bash
 cd frontend
@@ -181,79 +386,109 @@ npm install
 npm run dev
 ```
 
-生产模式启动：
+生产启动方式：
 
 ```bash
+cd frontend
 npm run build
 npm run start -- --hostname 127.0.0.1 --port 3000
 ```
 
-## 生产部署
+## 宝塔部署
 
-### 方案一：手动部署
+仓库已经提供宝塔部署参考文件：
 
-推荐组合：
+- `docs/baota-deployment.md`
+- `deploy/baota/nginx.conf`
+- `deploy/baota/frontend.pm2.config.cjs`
+- `deploy/baota/backend-start.sh`
+
+### 推荐部署结构
 
 - Nginx
-- Next.js 前端服务
-- FastAPI + Gunicorn/Uvicorn
+- Node.js 运行前端
+- Python 运行 FastAPI
 - PostgreSQL
-- PM2 或 systemd / Supervisor
+- PM2 或 Supervisor
 
-### 方案二：宝塔部署
+### 宝塔最短部署步骤
 
-宝塔部署的完整步骤见 [docs/baota-deployment.md](/E:/codexya/docs/baota-deployment.md)。
+1. 在宝塔安装 `Node.js`、`Python`、`Nginx`、`PostgreSQL`
+2. 拉取仓库代码
+3. 配置后端 `.env`
+4. 安装后端依赖 `pip install -r requirements.txt`
+5. 构建前端 `npm install && npm run build`
+6. 用 PM2 启动前端
+7. 用脚本或 Supervisor 启动后端
+8. 配置 Nginx 反代
+9. 开启 HTTPS
 
-仓库里已经提供了可直接参考的样例：
+### Nginx 反代思路
 
-- [nginx.conf](/E:/codexya/deploy/baota/nginx.conf)
-- [frontend.pm2.config.cjs](/E:/codexya/deploy/baota/frontend.pm2.config.cjs)
-- [backend-start.sh](/E:/codexya/deploy/baota/backend-start.sh)
+- `80/443` 对外
+- `/` 转发到前端 `3000`
+- `/api` 转发到后端 `8000`
 
-## 上线前检查清单
+## 生产建议
 
-- 替换所有本地演示密钥和默认密码
+上线前至少完成这些：
+
+- 切到 PostgreSQL
+- 替换所有本地密钥和默认密码
 - 关闭 demo 登录
-- 切换到 PostgreSQL
 - 配置正式域名和 HTTPS
-- 配置日志、监控、备份
-- 校验套餐额度、模型权限和后台角色
-- 校验支付和订阅回调
+- 配置日志与监控
+- 做数据库备份
+- 核验套餐价格与额度
+- 核验模型权限和并发限制
 
-## GitHub 推送前注意事项
+## Git 与安全
 
-以下内容不应提交到 GitHub：
+这些内容不要提交到 GitHub：
 
 - `backend/.env`
 - `frontend/.env.local`
 - 数据库文件
-- 日志文件
-- 运行时缓存和本地构建产物
+- 运行日志
+- 本地缓存
 
-仓库已经通过 `.gitignore` 对这些内容进行了忽略，但推送前仍建议用 `git status` 再检查一次。
-
-## 常用命令
+推送前建议执行：
 
 ```bash
-# 前端构建
-cd frontend
-npm run build
-
-# 后端编译检查
-cd backend
-python -m compileall app
-
-# 本地 PostgreSQL
-docker compose up -d postgres
+git status
 ```
 
-## 交付建议
+## 已验证的关键链路
 
-如果你准备把这个项目拿去正式展示或商用，建议优先完成这四件事：
+当前版本已经实际验证过这些场景：
 
-1. 切换到 PostgreSQL
-2. 使用正式模型密钥并关闭 mock
-3. 配置 HTTPS 域名
-4. 在后台把套餐额度、角色权限和支付链路走通
+- 管理员登录
+- 普通用户注册
+- 普通用户无法访问兑换码后台
+- 后台创建额度码
+- 后台创建套餐码
+- 用户兑换额度码
+- 用户兑换套餐码
+- 已兑换码拒绝重复兑换
+- 停用码拒绝兑换
+- 过期码拒绝兑换
+- 无效码拒绝兑换
+- 月额度耗尽后继续消耗额外额度
+- 月度重置不会清空额外额度
+- 额度不足时返回结构化错误码
+- 模型权限不足时返回结构化错误码
+- 后台创建用户成功后 Toast 正常展示
+- 前端生产构建通过
+- 后端编译通过
 
-做到这一步，这个仓库就已经不是原型，而是可以进入真实试运营阶段的产品基线。
+## 仓库目录
+
+```text
+codexya/
+├─ frontend/
+├─ backend/
+├─ docs/
+├─ deploy/baota/
+├─ runtime/
+└─ docker-compose.yml
+```

@@ -1,8 +1,12 @@
 import { clearSessionToken, getSessionToken } from "@/lib/auth";
 import type {
   AccountOverviewRecord,
+  AdminRedemptionCodeCreateRequest,
+  AdminRedemptionCodeUpdateRequest,
   AdminUserCreateRequest,
   AdminUserDeleteResponse,
+  RedemptionCodeRecord,
+  RedeemCodeResponse,
   AdminOrganizationRecord,
   AdminOverviewRecord,
   AdminPlanRecord,
@@ -36,16 +40,26 @@ type ApiRequestInit = RequestInit & {
 };
 
 type ErrorPayload = {
-  detail?: string;
+  detail?:
+    | string
+    | {
+        message?: string;
+        code?: string;
+        meta?: unknown;
+      };
 };
 
 export class ApiError extends Error {
   status: number;
+  code?: string;
+  meta?: unknown;
 
-  constructor(message: string, status = 500) {
+  constructor(message: string, status = 500, code?: string, meta?: unknown) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
+    this.meta = meta;
   }
 }
 
@@ -86,13 +100,15 @@ async function readJson<T>(path: string, init?: ApiRequestInit): Promise<T> {
     });
 
     if (!response.ok) {
-      const message = await tryReadErrorMessage(response);
+      const payload = await tryReadErrorPayload(response);
       if (response.status === 401 && resolvedToken) {
         clearSessionToken();
       }
       throw new ApiError(
-        message || `请求失败，状态码 ${response.status}`,
-        response.status
+        payload.message || `请求失败，状态码 ${response.status}`,
+        response.status,
+        payload.code,
+        payload.meta
       );
     }
 
@@ -110,12 +126,21 @@ async function readJson<T>(path: string, init?: ApiRequestInit): Promise<T> {
   }
 }
 
-async function tryReadErrorMessage(response: Response): Promise<string> {
+async function tryReadErrorPayload(
+  response: Response
+): Promise<{ message: string; code?: string; meta?: unknown }> {
   try {
     const payload = (await response.json()) as ErrorPayload;
-    return payload.detail ?? "";
+    if (typeof payload.detail === "string") {
+      return { message: payload.detail };
+    }
+    return {
+      message: payload.detail?.message ?? "",
+      code: payload.detail?.code,
+      meta: payload.detail?.meta
+    };
   } catch {
-    return "";
+    return { message: "" };
   }
 }
 
@@ -310,6 +335,14 @@ export async function switchPlan(
   });
 }
 
+export async function redeemCode(code: string): Promise<RedeemCodeResponse> {
+  return readJson<RedeemCodeResponse>("/api/billing/redeem-code", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+    requiresAuth: true
+  });
+}
+
 export async function getAdminOverview(): Promise<AdminOverviewRecord> {
   return readJson<AdminOverviewRecord>("/api/admin/overview", {
     requiresAuth: true
@@ -360,6 +393,42 @@ export async function getAdminOrganizations(): Promise<AdminOrganizationRecord[]
 
 export async function getAdminPlans(): Promise<AdminPlanRecord[]> {
   return readJson<AdminPlanRecord[]>("/api/admin/plans", {
+    requiresAuth: true
+  });
+}
+
+export async function getAdminRedemptionCodes(): Promise<RedemptionCodeRecord[]> {
+  return readJson<RedemptionCodeRecord[]>("/api/admin/redemption-codes", {
+    requiresAuth: true
+  });
+}
+
+export async function createAdminRedemptionCodes(
+  payload: AdminRedemptionCodeCreateRequest
+): Promise<RedemptionCodeRecord[]> {
+  return readJson<RedemptionCodeRecord[]>("/api/admin/redemption-codes", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    requiresAuth: true
+  });
+}
+
+export async function updateAdminRedemptionCode(
+  redemptionCodeId: string,
+  payload: AdminRedemptionCodeUpdateRequest
+): Promise<RedemptionCodeRecord> {
+  return readJson<RedemptionCodeRecord>(`/api/admin/redemption-codes/${redemptionCodeId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+    requiresAuth: true
+  });
+}
+
+export async function deleteAdminRedemptionCode(
+  redemptionCodeId: string
+): Promise<{ message: string }> {
+  return readJson<{ message: string }>(`/api/admin/redemption-codes/${redemptionCodeId}`, {
+    method: "DELETE",
     requiresAuth: true
   });
 }

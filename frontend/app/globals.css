@@ -3,16 +3,14 @@
 @tailwind utilities;
 
 :root {
-  --canvas: #efe9de;
-  --panel: rgba(255, 250, 243, 0.9);
-  --ink: #142739;
-  --muted: #647282;
-  --line: rgba(20, 39, 57, 0.11);
-  --brand: #a85f34;
-  --brand-soft: rgba(168, 95, 52, 0.12);
-  --warning: #9c4527;
-  --success: #1d7d5f;
-  --glow: rgba(11, 44, 80, 0.07);
+  --canvas: #f5f9ff;
+  --panel: rgba(255, 255, 255, 0.88);
+  --ink: #0f2540;
+  --muted: #5e738d;
+  --line: rgba(15, 37, 64, 0.1);
+  --brand: #1f6fff;
+  --warning: #c45b4d;
+  --success: #17906f;
 }
 
 * {
@@ -27,9 +25,9 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(214, 163, 108, 0.13), transparent 26%),
-    radial-gradient(circle at 82% 18%, rgba(32, 79, 117, 0.08), transparent 24%),
-    linear-gradient(180deg, #f7f1e8 0%, #efe7dc 52%, #e9e0d2 100%);
+    radial-gradient(circle at top left, rgba(79, 127, 255, 0.12), transparent 25%),
+    radial-gradient(circle at 82% 12%, rgba(45, 190, 255, 0.09), transparent 18%),
+    linear-gradient(180deg, #fcfdff 0%, #f5f9ff 48%, #eef5ff 100%);
   color: var(--ink);
   font-family: "Aptos", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
   text-rendering: optimizeLegibility;
@@ -42,44 +40,40 @@ a {
 }
 
 ::selection {
-  background: rgba(179, 92, 52, 0.22);
+  background: rgba(31, 111, 255, 0.18);
 }
 
 @layer components {
   .button-primary {
     @apply inline-flex items-center gap-2 rounded-full border border-transparent px-5 py-3 text-sm font-medium text-white transition duration-200 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60;
-    background: linear-gradient(135deg, #12263a 0%, #1d4768 100%);
-    box-shadow: 0 14px 28px rgba(18, 38, 58, 0.18);
+    background: linear-gradient(135deg, #0f2745 0%, #1f6fff 100%);
+    box-shadow: 0 16px 34px rgba(31, 111, 255, 0.2);
   }
 
   .button-secondary {
-    @apply inline-flex items-center gap-2 rounded-full border border-line bg-panel px-5 py-3 text-sm font-medium text-ink transition duration-200 hover:-translate-y-0.5 hover:text-brand disabled:cursor-not-allowed disabled:opacity-55;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
-  }
-
-  .button-secondary:hover {
-    border-color: rgba(179, 92, 52, 0.35);
+    @apply inline-flex items-center gap-2 rounded-full border border-line bg-white px-5 py-3 text-sm font-medium text-ink transition duration-200 hover:-translate-y-0.5 hover:text-brand disabled:cursor-not-allowed disabled:opacity-55;
+    box-shadow: 0 10px 24px rgba(15, 37, 64, 0.06);
   }
 
   .button-danger {
     @apply inline-flex items-center gap-2 rounded-full border px-5 py-3 text-sm font-medium transition duration-200 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-55;
-    border-color: rgba(156, 69, 39, 0.24);
-    background: rgba(156, 69, 39, 0.08);
+    border-color: rgba(196, 91, 77, 0.22);
+    background: rgba(196, 91, 77, 0.08);
     color: var(--warning);
   }
 
   .button-ghost {
-    @apply inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-muted transition hover:bg-white/40 hover:text-ink;
+    @apply inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-muted transition hover:bg-white/70 hover:text-ink;
   }
 
   .input-base {
-    @apply w-full rounded-[1.15rem] border border-line bg-white/75 px-4 py-3 text-sm text-ink outline-none transition placeholder:text-muted focus:border-brand focus:bg-white;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+    @apply w-full rounded-[1.15rem] border border-line bg-white px-4 py-3 text-sm text-ink outline-none transition placeholder:text-muted focus:border-brand;
+    box-shadow: 0 0 0 0 rgba(31, 111, 255, 0);
   }
 
   .textarea-base {
-    @apply min-h-[132px] w-full rounded-[1.25rem] border border-line bg-white/75 px-4 py-3 text-sm text-ink outline-none transition placeholder:text-muted focus:border-brand focus:bg-white;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+    @apply min-h-[132px] w-full rounded-[1.25rem] border border-line bg-white px-4 py-3 text-sm text-ink outline-none transition placeholder:text-muted focus:border-brand;
+    box-shadow: 0 0 0 0 rgba(31, 111, 255, 0);
   }
 
   .eyebrow {
@@ -91,11 +85,35 @@ a {
   }
 
   .status-pill {
-    @apply inline-flex items-center rounded-full border border-line bg-white/70 px-3 py-1 text-xs tracking-[0.16em] text-muted;
+    @apply inline-flex items-center rounded-full border border-line bg-white px-3 py-1 text-xs tracking-[0.16em] text-muted;
   }
 
   .display-title {
     font-family: "Aptos Display", "Iowan Old Style", "Source Han Serif SC", serif;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
   }
+
+  .tech-pill {
+    @apply inline-flex items-center rounded-full border px-3 py-1 text-[0.68rem] font-semibold tracking-[0.22em];
+    border-color: rgba(31, 111, 255, 0.16);
+    background: rgba(31, 111, 255, 0.08);
+    color: var(--brand);
+  }
+
+  .table-shell {
+    @apply overflow-hidden rounded-[1.35rem] border border-line bg-white/90;
+  }
+
+  .table-row {
+    @apply grid items-center gap-3 border-b border-line px-4 py-4 last:border-b-0;
+  }
+}
+
+.button-secondary:hover {
+  border-color: rgba(31, 111, 255, 0.22);
+}
+
+.input-base:focus,
+.textarea-base:focus {
+  box-shadow: 0 0 0 4px rgba(31, 111, 255, 0.1);
 }

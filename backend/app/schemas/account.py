@@ -18,6 +18,8 @@ BillingCycle = Literal["monthly", "yearly"]
 SubscriptionStatus = Literal["trialing", "active", "past_due", "canceled"]
 OrderStatus = Literal["pending", "paid", "failed", "refunded"]
 AuthStatus = Literal["active", "suspended"]
+RedemptionCodeStatus = Literal["active", "redeemed", "disabled", "expired"]
+RedemptionRewardType = Literal["plan", "quota"]
 
 
 class PlanRecord(StrictBaseModel):
@@ -98,6 +100,33 @@ class AuditLogRecord(StrictBaseModel):
     created_at: datetime
 
 
+class QuotaSnapshotRecord(StrictBaseModel):
+    base_limit: int
+    base_used: int
+    base_remaining: int
+    bonus_remaining: int
+    total_remaining: int
+
+
+class RedemptionCodeRecord(StrictBaseModel):
+    id: str
+    code: str
+    status: RedemptionCodeStatus
+    reward_type: RedemptionRewardType
+    plan_id: str | None = None
+    plan_name: str | None = None
+    billing_cycle: BillingCycle | None = None
+    quota_amount: int | None = None
+    expires_at: datetime | None = None
+    note: str = ""
+    created_by_user_id: str
+    redeemed_by_user_id: str | None = None
+    redeemed_by_email: str | None = None
+    redeemed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class CurrentUserRecord(StrictBaseModel):
     id: str
     name: str
@@ -108,9 +137,13 @@ class CurrentUserRecord(StrictBaseModel):
     plan: PlanRecord
     monthly_usage: int
     monthly_limit: int
+    bonus_quota_balance: int = 0
+    quota_snapshot: QuotaSnapshotRecord
     remaining_quota: int
     can_access_admin: bool
     active_job_count: int = 0
+    latest_redemption_at: datetime | None = None
+    latest_redemption_summary: str | None = None
     organization: OrganizationRecord | None = None
     organization_role: OrganizationRole | None = None
     active_subscription: SubscriptionRecord | None = None
@@ -159,6 +192,20 @@ class SwitchPlanResponse(StrictBaseModel):
     user: CurrentUserRecord
     subscription: SubscriptionRecord
     order: BillingOrderRecord
+
+
+class RedeemCodeRequest(StrictBaseModel):
+    code: str = Field(min_length=4, max_length=128)
+
+
+class RedeemCodeResponse(StrictBaseModel):
+    message: str
+    reward_type: RedemptionRewardType
+    user: CurrentUserRecord
+    subscription: SubscriptionRecord | None = None
+    order: BillingOrderRecord | None = None
+    quota_snapshot: QuotaSnapshotRecord
+    redeemed_code: RedemptionCodeRecord
 
 
 class CreateMemberRequest(StrictBaseModel):
@@ -220,8 +267,12 @@ class AdminUserRecord(StrictBaseModel):
     plan_name: str
     monthly_usage: int
     monthly_limit: int
+    bonus_quota_balance: int = 0
+    quota_snapshot: QuotaSnapshotRecord
     remaining_quota: int
     active_job_count: int
+    latest_redemption_at: datetime | None = None
+    latest_redemption_summary: str | None = None
     allowed_model_profiles: list[ModelProfile] = Field(default_factory=list)
     updated_at: datetime
 
@@ -250,6 +301,7 @@ class AdminUserUpdateRequest(StrictBaseModel):
     organization_role: OrganizationRole | None = None
     plan_id: str | None = None
     monthly_usage: int | None = Field(default=None, ge=0)
+    bonus_quota_balance: int | None = Field(default=None, ge=0)
 
 
 class AdminUserCreateRequest(StrictBaseModel):
@@ -276,6 +328,22 @@ class AdminPlanUpdateRequest(StrictBaseModel):
     team_seats: int | None = Field(default=None, ge=1)
 
 
+class AdminRedemptionCodeCreateRequest(StrictBaseModel):
+    reward_type: RedemptionRewardType
+    plan_id: str | None = None
+    billing_cycle: BillingCycle | None = "monthly"
+    quota_amount: int | None = Field(default=None, ge=1)
+    expires_at: datetime | None = None
+    note: str = ""
+    quantity: int = Field(default=1, ge=1, le=50)
+
+
+class AdminRedemptionCodeUpdateRequest(StrictBaseModel):
+    status: RedemptionCodeStatus | None = None
+    expires_at: datetime | None = None
+    note: str | None = None
+
+
 class AccountOverviewRecord(StrictBaseModel):
     user: CurrentUserRecord
     available_plans: list[PlanRecord]
@@ -284,6 +352,7 @@ class AccountOverviewRecord(StrictBaseModel):
     active_subscription: SubscriptionRecord | None = None
     recent_orders: list[BillingOrderRecord] = Field(default_factory=list)
     recent_audits: list[AuditLogRecord] = Field(default_factory=list)
+    recent_redemptions: list[RedemptionCodeRecord] = Field(default_factory=list)
     recent_analyses: list[AnalysisRecord] = Field(default_factory=list)
     recent_jobs: list[AnalysisJobRecord] = Field(default_factory=list)
 

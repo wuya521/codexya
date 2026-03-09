@@ -4,8 +4,18 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.db_models import UserModel
-from app.schemas.account import SwitchPlanRequest, SwitchPlanResponse
-from app.services.account_service import get_active_subscription, list_recent_orders, switch_plan
+from app.schemas.account import (
+    RedeemCodeRequest,
+    RedeemCodeResponse,
+    SwitchPlanRequest,
+    SwitchPlanResponse
+)
+from app.services.account_service import (
+    get_active_subscription,
+    list_recent_orders,
+    redeem_code,
+    switch_plan
+)
 from app.services.repository import repository
 
 router = APIRouter(prefix="/billing", tags=["计费"])
@@ -54,3 +64,15 @@ def post_switch_plan(
         subscription=subscription,
         order=order
     )
+
+
+@router.post("/redeem-code", summary="兑换套餐或额度", response_model=RedeemCodeResponse)
+def post_redeem_code(
+    payload: RedeemCodeRequest,
+    db: Session = Depends(get_db),
+    user: UserModel = Depends(get_current_user)
+):
+    try:
+        return redeem_code(db, user, payload.code)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

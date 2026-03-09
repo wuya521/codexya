@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.models.db_models import AuditLogModel, SubscriptionModel, UserModel
 from app.schemas.account import (
+    AdminRedemptionCodeCreateRequest,
+    AdminRedemptionCodeUpdateRequest,
     AdminUserCreateRequest,
     AdminUserDeleteResponse,
     AdminOrganizationRecord,
@@ -14,15 +16,20 @@ from app.schemas.account import (
     AdminUserRecord,
     AdminUserUpdateRequest,
     AuditLogRecord,
-    BillingOrderRecord
+    BillingOrderRecord,
+    RedemptionCodeRecord
 )
 from app.services.account_service import (
+    create_admin_redemption_codes as create_account_admin_redemption_codes,
+    delete_admin_redemption_code as delete_account_admin_redemption_code,
     get_admin_overview as get_account_admin_overview,
     list_admin_audits as list_account_admin_audits,
+    list_admin_redemption_codes as list_account_admin_redemption_codes,
     list_admin_organizations as list_account_admin_organizations,
     list_admin_orders as list_account_admin_orders,
     list_admin_users as list_account_admin_users,
-    list_plans
+    list_plans,
+    update_admin_redemption_code as update_account_admin_redemption_code
 )
 from app.services.auth_service import create_password_hash, slugify
 from app.services.analysis_job_service import list_admin_analysis_jobs
@@ -64,6 +71,7 @@ def create_admin_user(
             role=payload.role,
             plan_id=plan.id,
             monthly_analysis_usage=0,
+            bonus_quota_balance=0,
             last_usage_reset_at=now,
             last_active_at=now
         )
@@ -203,6 +211,9 @@ def update_admin_user(
         user.monthly_analysis_usage = payload.monthly_usage
         user.last_usage_reset_at = datetime.now(timezone.utc)
         changes["monthly_usage"] = payload.monthly_usage
+    if payload.bonus_quota_balance is not None and payload.bonus_quota_balance != user.bonus_quota_balance:
+        user.bonus_quota_balance = payload.bonus_quota_balance
+        changes["bonus_quota_balance"] = payload.bonus_quota_balance
     if payload.organization_role is not None and membership is not None and payload.organization_role != membership.role:
         membership.role = payload.organization_role
         changes["organization_role"] = membership.role
@@ -389,6 +400,35 @@ def update_admin_plan(
     raise ValueError("套餐更新后无法重新读取。")
 
 
+def list_admin_redemption_codes(db: Session) -> list[RedemptionCodeRecord]:
+    return list_account_admin_redemption_codes(db)
+
+
+def create_admin_redemption_codes(
+    db: Session,
+    actor: UserModel,
+    payload: AdminRedemptionCodeCreateRequest
+) -> list[RedemptionCodeRecord]:
+    return create_account_admin_redemption_codes(db, actor, payload)
+
+
+def update_admin_redemption_code(
+    db: Session,
+    actor: UserModel,
+    redemption_code_id: str,
+    payload: AdminRedemptionCodeUpdateRequest
+) -> RedemptionCodeRecord:
+    return update_account_admin_redemption_code(db, actor, redemption_code_id, payload)
+
+
+def delete_admin_redemption_code(
+    db: Session,
+    actor: UserModel,
+    redemption_code_id: str
+) -> None:
+    delete_account_admin_redemption_code(db, actor, redemption_code_id)
+
+
 def _serialize_admin_user(db: Session, user: UserModel) -> AdminUserRecord:
     plan = repository.get_plan(db, user.plan_id)
     if plan is None:
@@ -410,12 +450,23 @@ def _serialize_admin_user(db: Session, user: UserModel) -> AdminUserRecord:
         plan_name=plan.name,
         monthly_usage=user.monthly_analysis_usage,
         monthly_limit=plan.monthly_analysis_quota,
-        remaining_quota=max(plan.monthly_analysis_quota - user.monthly_analysis_usage, 0),
+        bonus_quota_balance=user.bonus_quota_balance,
+        quota_snapshot={
+            "base_limit": plan.monthly_analysis_quota,
+            "base_used": user.monthly_analysis_usage,
+            "base_remaining": max(plan.monthly_analysis_quota - user.monthly_analysis_usage, 0),
+            "bonus_remaining": user.bonus_quota_balance,
+            "total_remaining": max(plan.monthly_analysis_quota - user.monthly_analysis_usage, 0)
+            + user.bonus_quota_balance
+        },
+        remaining_quota=max(plan.monthly_analysis_quota - user.monthly_analysis_usage, 0) + user.bonus_quota_balance,
         active_job_count=repository.count_analysis_jobs(
             db,
             user_id=user.id,
             statuses={"queued", "running"}
         ),
+        latest_redemption_at=None,
+        latest_redemption_summary=None,
         allowed_model_profiles=get_allowed_model_profiles(plan),
         updated_at=user.updated_at
     )
@@ -429,6 +480,10 @@ __all__ = [
     "list_admin_audits",
     "list_admin_plans",
     "list_admin_analysis_jobs",
+    "list_admin_redemption_codes",
+    "create_admin_redemption_codes",
+    "update_admin_redemption_code",
+    "delete_admin_redemption_code",
     "update_admin_user",
     "update_admin_plan"
 ]

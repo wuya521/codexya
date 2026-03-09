@@ -69,10 +69,8 @@ _RERUN_SUFFIX_PATTERN = re.compile(r"(?:\s*[（(]重演[)）]\s*)+$")
 def bootstrap_data(db: Session) -> None:
     bootstrap_account_data(db)
     repository.upsert_templates(db, TEMPLATE_SEED)
-    for index, analysis in enumerate(repository.list_analyses(db)):
-        owner_user_id = "demo-admin" if index % 2 == 0 else "demo-vip"
-        organization_id = "org-lab" if index % 2 == 0 else "org-growth"
-        repository.ensure_analysis_ownership(db, analysis.id, owner_user_id, organization_id)
+    for analysis in repository.list_analyses(db):
+        repository.ensure_analysis_ownership(db, analysis.id, "demo-admin", "org-lab")
 
 
 def list_templates(db: Session) -> list[TemplateRecord]:
