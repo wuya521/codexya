@@ -11,7 +11,7 @@ import type {
 
 const modeLabels: Record<AnalysisMode, string> = {
   forecast: "走向预测",
-  best_path: "最佳路径"
+  best_path: "路径规划"
 };
 
 const directionLabels: Record<VariableItem["direction"], string> = {

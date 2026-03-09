@@ -2,7 +2,7 @@ from collections.abc import Iterable
 
 from datetime import datetime, timezone
 
-from sqlalchemy import desc, or_, select
+from sqlalchemy import delete, desc, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.db_models import (
@@ -104,6 +104,10 @@ class Repository:
         db.refresh(user)
         return user
 
+    def delete_user(self, db: Session, user_id: str) -> None:
+        db.execute(delete(UserModel).where(UserModel.id == user_id))
+        db.commit()
+
     def update_user_plan(self, db: Session, user: UserModel, plan_id: str) -> UserModel:
         user.plan_id = plan_id
         db.commit()
@@ -169,6 +173,10 @@ class Repository:
         db.refresh(account)
         return account
 
+    def delete_auth_account(self, db: Session, user_id: str) -> None:
+        db.execute(delete(AuthAccountModel).where(AuthAccountModel.user_id == user_id))
+        db.commit()
+
     def create_session_token(self, db: Session, session_token: SessionTokenModel) -> SessionTokenModel:
         db.add(session_token)
         db.commit()
@@ -185,6 +193,10 @@ class Repository:
         db.commit()
         db.refresh(session_token)
         return session_token
+
+    def delete_session_tokens_by_user_id(self, db: Session, user_id: str) -> None:
+        db.execute(delete(SessionTokenModel).where(SessionTokenModel.user_id == user_id))
+        db.commit()
 
     def upsert_organizations(self, db: Session, organizations: Iterable[OrganizationModel]) -> None:
         for organization in organizations:
@@ -210,6 +222,10 @@ class Repository:
 
     def list_organizations(self, db: Session) -> list[OrganizationModel]:
         return db.scalars(select(OrganizationModel).order_by(OrganizationModel.updated_at.desc())).all()
+
+    def delete_organization(self, db: Session, organization_id: str) -> None:
+        db.execute(delete(OrganizationModel).where(OrganizationModel.id == organization_id))
+        db.commit()
 
     def upsert_organization_members(self, db: Session, memberships: Iterable[OrganizationMemberModel]) -> None:
         for membership in memberships:
@@ -249,6 +265,14 @@ class Repository:
         )
         return db.scalar(statement)
 
+    def list_memberships_for_user(self, db: Session, user_id: str) -> list[OrganizationMemberModel]:
+        statement = (
+            select(OrganizationMemberModel)
+            .where(OrganizationMemberModel.user_id == user_id)
+            .order_by(OrganizationMemberModel.created_at.asc())
+        )
+        return db.scalars(statement).all()
+
     def save_membership(
         self,
         db: Session,
@@ -272,6 +296,18 @@ class Repository:
                 if row.role == target_role:
                     return row
         return rows[0]
+
+    def delete_memberships_for_user(self, db: Session, user_id: str) -> None:
+        db.execute(delete(OrganizationMemberModel).where(OrganizationMemberModel.user_id == user_id))
+        db.commit()
+
+    def delete_memberships_for_organization(self, db: Session, organization_id: str) -> None:
+        db.execute(
+            delete(OrganizationMemberModel).where(
+                OrganizationMemberModel.organization_id == organization_id
+            )
+        )
+        db.commit()
 
     def upsert_subscriptions(self, db: Session, subscriptions: Iterable[SubscriptionModel]) -> None:
         for subscription in subscriptions:
@@ -332,6 +368,12 @@ class Repository:
     def list_subscriptions(self, db: Session) -> list[SubscriptionModel]:
         return db.scalars(select(SubscriptionModel).order_by(SubscriptionModel.updated_at.desc())).all()
 
+    def delete_subscriptions_for_organization(self, db: Session, organization_id: str) -> None:
+        db.execute(
+            delete(SubscriptionModel).where(SubscriptionModel.organization_id == organization_id)
+        )
+        db.commit()
+
     def upsert_orders(self, db: Session, orders: Iterable[BillingOrderModel]) -> None:
         for order in orders:
             existing = db.get(BillingOrderModel, order.id)
@@ -380,6 +422,16 @@ class Repository:
             statement = statement.limit(limit)
         return db.scalars(statement).all()
 
+    def delete_orders_by_user_id(self, db: Session, user_id: str) -> None:
+        db.execute(delete(BillingOrderModel).where(BillingOrderModel.user_id == user_id))
+        db.commit()
+
+    def delete_orders_by_organization(self, db: Session, organization_id: str) -> None:
+        db.execute(
+            delete(BillingOrderModel).where(BillingOrderModel.organization_id == organization_id)
+        )
+        db.commit()
+
     def upsert_audit_logs(self, db: Session, audit_logs: Iterable[AuditLogModel]) -> None:
         for audit_log in audit_logs:
             existing = db.get(AuditLogModel, audit_log.id)
@@ -415,6 +467,14 @@ class Repository:
         if limit is not None:
             statement = statement.limit(limit)
         return db.scalars(statement).all()
+
+    def delete_audit_logs_by_actor(self, db: Session, actor_user_id: str) -> None:
+        db.execute(delete(AuditLogModel).where(AuditLogModel.actor_user_id == actor_user_id))
+        db.commit()
+
+    def delete_audit_logs_by_organization(self, db: Session, organization_id: str) -> None:
+        db.execute(delete(AuditLogModel).where(AuditLogModel.organization_id == organization_id))
+        db.commit()
 
     def list_templates(self, db: Session) -> list[TemplateRecord]:
         rows = db.scalars(select(TemplateModel).order_by(TemplateModel.name.asc())).all()
@@ -572,6 +632,32 @@ class Repository:
         db.refresh(ownership)
         return ownership
 
+    def delete_analysis_ownerships_by_user_id(self, db: Session, user_id: str) -> None:
+        db.execute(
+            delete(AnalysisOwnershipModel).where(AnalysisOwnershipModel.user_id == user_id)
+        )
+        db.commit()
+
+    def delete_analysis_ownerships_by_organization(self, db: Session, organization_id: str) -> None:
+        db.execute(
+            delete(AnalysisOwnershipModel).where(
+                AnalysisOwnershipModel.organization_id == organization_id
+            )
+        )
+        db.commit()
+
+    def list_orphaned_analysis_ids(self, db: Session) -> list[str]:
+        statement = select(AnalysisModel.id).where(
+            ~AnalysisModel.id.in_(select(AnalysisOwnershipModel.analysis_id))
+        )
+        return db.scalars(statement).all()
+
+    def delete_analyses(self, db: Session, analysis_ids: list[str]) -> None:
+        if not analysis_ids:
+            return
+        db.execute(delete(AnalysisModel).where(AnalysisModel.id.in_(analysis_ids)))
+        db.commit()
+
     def create_analysis_job(
         self,
         db: Session,
@@ -589,6 +675,16 @@ class Repository:
         db.commit()
         db.refresh(job)
         return job
+
+    def delete_analysis_jobs_by_user_id(self, db: Session, user_id: str) -> None:
+        db.execute(delete(AnalysisJobModel).where(AnalysisJobModel.user_id == user_id))
+        db.commit()
+
+    def delete_analysis_jobs_by_organization(self, db: Session, organization_id: str) -> None:
+        db.execute(
+            delete(AnalysisJobModel).where(AnalysisJobModel.organization_id == organization_id)
+        )
+        db.commit()
 
     def list_analysis_jobs(
         self,

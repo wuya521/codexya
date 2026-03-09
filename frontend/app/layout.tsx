@@ -5,9 +5,9 @@ import { AppShell } from "@/components/app-shell";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "First Principles Strategy OS",
+  title: "Super OS 超级OS",
   description:
-    "面向真实决策推演、最佳路径规划、团队协作与商业化运营的一体化工作台。"
+    "面向真实决策、路径规划、异步推演与套餐购买的一体化控制台。"
 };
 
 export default function RootLayout({

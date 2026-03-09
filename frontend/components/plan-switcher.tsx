@@ -78,10 +78,10 @@ export function PlanSwitcher({
         }
       >
         {isCurrentPlan
-          ? "当前套餐"
+          ? "当前已启用"
           : isPending
-            ? "切换中..."
-            : `切换到该套餐（${billingCycle === "monthly" ? "月付" : "年付"}）`}
+            ? "处理中..."
+            : `${billingCycle === "monthly" ? "按月购买" : "按年购买"}`}
       </button>
       {notice ? <p className="text-xs text-success">{notice}</p> : null}
       {error ? <p className="text-xs text-warning">{error}</p> : null}

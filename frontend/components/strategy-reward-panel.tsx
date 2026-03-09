@@ -19,7 +19,7 @@ type RewardCard = {
   stability: number;
   leverage: number;
   optionality: number;
-  steps: number;
+  checkpoints: number[];
   tradeoffs: number;
   highlighted: boolean;
 };
@@ -71,7 +71,11 @@ function buildRewardCard(
     stability,
     leverage,
     optionality,
-    steps: path.steps.length,
+    checkpoints: [
+      clamp(speed * 0.72 + leverage * 0.28),
+      clamp(stability * 0.52 + leverage * 0.48),
+      overall
+    ],
     tradeoffs: path.tradeoffs.length,
     highlighted: recommendedPaths.primary_choice === target
   };
@@ -94,9 +98,9 @@ export function StrategyRewardPanel({
       <div className="rounded-[1.3rem] border border-line bg-canvas p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold text-ink">路线奖励模拟</p>
+            <p className="text-sm font-semibold text-ink">路径奖励模拟</p>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-              这里不是伪装成“强化学习训练”的黑箱分数，而是根据当前路径长度、权衡成本、风险密度和整体置信度做出的可解释奖励估算。
+              这里不是装作“强化学习训练”的黑箱分数，而是根据路径长度、风险密度、回报杠杆和可回退空间做出的可解释评分。
             </p>
           </div>
           {highestRisk ? (
@@ -113,13 +117,13 @@ export function StrategyRewardPanel({
             key={card.target}
             className={`rounded-[1.4rem] border p-5 ${
               card.highlighted
-                ? "border-brand/35 bg-[rgba(179,92,52,0.08)]"
+                ? "border-brand/35 bg-[rgba(168,95,52,0.08)]"
                 : "border-line bg-canvas"
             }`}
           >
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs tracking-[0.18em] text-muted">路径策略</p>
+                <p className="text-xs tracking-[0.18em] text-muted">路线策略</p>
                 <h3 className="mt-2 text-xl font-semibold text-ink">
                   {card.title}
                 </h3>
@@ -139,12 +143,26 @@ export function StrategyRewardPanel({
               <RewardMetric label="保留选项" value={card.optionality} />
             </div>
 
-            <div className="mt-5 rounded-[1rem] border border-line bg-panel/60 p-4 text-sm leading-6 text-muted">
-              <p>动作步数：{card.steps}</p>
-              <p className="mt-2">权衡项：{card.tradeoffs}</p>
-              <p className="mt-2">
-                主推荐：{card.highlighted ? "是" : "否"}
-              </p>
+            <div className="mt-5 rounded-[1rem] border border-line bg-panel/60 p-4">
+              <div className="flex items-center justify-between gap-3 text-xs tracking-[0.16em] text-muted">
+                <span>阶段奖励</span>
+                <span>权衡项 {card.tradeoffs}</span>
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                {card.checkpoints.map((value, index) => (
+                  <div key={`${card.target}-${index}`} className="flex-1">
+                    <div className="h-2 overflow-hidden rounded-full bg-white/70">
+                      <div
+                        className="h-full rounded-full bg-[linear-gradient(90deg,#1d4768,#a85f34)]"
+                        style={{ width: `${value}%` }}
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-muted">
+                      阶段 {index + 1} / {value}
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
           </article>
         ))}
@@ -162,7 +180,7 @@ function RewardMetric({ label, value }: { label: string; value: number }) {
       </div>
       <div className="mt-2 h-2 overflow-hidden rounded-full bg-panel">
         <div
-          className="h-full rounded-full bg-[linear-gradient(90deg,#21486b,#b35c34)]"
+          className="h-full rounded-full bg-[linear-gradient(90deg,#1d4768,#a85f34)]"
           style={{ width: `${value}%` }}
         />
       </div>

@@ -69,7 +69,7 @@ def list_demo_logins(db: Session) -> list[DemoLoginRecord]:
 
     records: list[DemoLoginRecord] = []
     for user in repository.list_users(db):
-        if not user.id.startswith("demo-"):
+        if user.id != "demo-admin":
             continue
         plan = repository.get_plan(db, user.plan_id)
         plan_name = plan.name if plan is not None else "未知套餐"
@@ -122,7 +122,7 @@ def register_user(db: Session, payload: AuthRegisterRequest) -> tuple[UserModel,
         )
     )
 
-    organization_name = payload.organization_name.strip() or f"{payload.name} 的工作台"
+    organization_name = payload.organization_name.strip() or f"Super OS 空间 · {payload.name}"
     organization = repository.create_organization(
         db,
         OrganizationModel(

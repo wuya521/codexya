@@ -1,9 +1,14 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { getDemoUsers, getSession, loginWithPassword, registerAccount } from "@/lib/api";
+import {
+  getDemoUsers,
+  getSession,
+  loginWithPassword,
+  registerAccount
+} from "@/lib/api";
 import { setSessionToken } from "@/lib/auth";
 import type { DemoLoginRecord } from "@/types/account";
 
@@ -53,6 +58,8 @@ export default function LoginPage() {
     };
   }, [router]);
 
+  const founderUser = useMemo(() => demoUsers[0] ?? null, [demoUsers]);
+
   function updateField<K extends keyof typeof form>(field: K, value: (typeof form)[K]) {
     setForm((current) => ({ ...current, [field]: value }));
   }
@@ -82,39 +89,49 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-      <section className="rounded-[2rem] border border-line bg-[linear-gradient(135deg,rgba(9,27,51,0.98),rgba(14,39,67,0.92))] p-8 text-slate-100 shadow-panel">
-        <p className="text-xs tracking-[0.3em] text-slate-300">正式入口</p>
+    <div className="grid gap-6 lg:grid-cols-[1.08fr_0.92fr]">
+      <section className="rounded-[2rem] border border-line bg-[linear-gradient(135deg,rgba(10,28,45,0.98),rgba(17,45,66,0.94))] p-8 text-slate-100 shadow-panel">
+        <p className="text-xs tracking-[0.3em] text-slate-300">WELCOME RITUAL</p>
         <h1 className="display-title mt-5 text-4xl font-semibold leading-tight">
-          用真实账户进入你的工作台、团队和计费系统。
+          欢迎回到 Super OS。
+          <br />
+          把注意力放回最重要的那件事。
         </h1>
         <p className="mt-5 max-w-2xl text-base leading-7 text-slate-300">
-          当前版本已经移除前端 mock 回退。登录后拿到的是真实会话令牌，后续访问的也是你真实的账户、组织、订单和推演数据。
+          登录后你会进入自己的控制台，继续发起推演、追踪任务、查看结果并选择合适的套餐。
         </p>
 
-        {demoUsers.length ? (
-          <div className="mt-8 grid gap-4">
-            {demoUsers.map((user) => (
+        <div className="mt-8 grid gap-4 sm:grid-cols-3">
+          <RitualCard title="先定问题" detail="把边界写清楚，模型才不会空转。" />
+          <RitualCard title="再看路径" detail="比较最快、最好、最稳三条方案。" />
+          <RitualCard title="最后执行" detail="任务异步排队，结果持续沉淀。" />
+        </div>
+
+        {founderUser ? (
+          <div className="mt-8 rounded-[1.5rem] border border-white/10 bg-white/6 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold text-white">{founderUser.name}</p>
+                <p className="mt-1 text-sm text-slate-300">{founderUser.email}</p>
+                <p className="mt-2 text-xs text-slate-400">
+                  演示密码：{founderUser.password_hint}
+                </p>
+              </div>
               <button
-                key={user.id}
                 type="button"
+                className="button-secondary"
                 onClick={() => {
                   setMode("login");
                   setForm((current) => ({
                     ...current,
-                    email: user.email,
-                    password: user.password_hint
+                    email: founderUser.email,
+                    password: founderUser.password_hint
                   }));
                 }}
-                className="rounded-[1.25rem] border border-white/10 bg-white/5 px-5 py-4 text-left transition hover:bg-white/10"
               >
-                <p className="text-sm font-semibold text-white">{user.name}</p>
-                <p className="mt-1 text-sm text-slate-300">{user.email}</p>
-                <p className="mt-2 text-xs text-slate-400">
-                  {user.plan_name} / 演示密码 {user.password_hint}
-                </p>
+                代入创始者账号
               </button>
-            ))}
+            </div>
           </div>
         ) : null}
       </section>
@@ -141,33 +158,22 @@ export default function LoginPage() {
           {mode === "register" ? (
             <>
               <label className="block space-y-2">
-                <span className="text-sm font-medium text-ink">姓名</span>
+                <span className="text-sm font-medium text-ink">你的称呼</span>
                 <input
                   className="input-base"
                   value={form.name}
                   onChange={(event) => updateField("name", event.target.value)}
-                  placeholder="你的姓名"
+                  placeholder="例如：林燃"
                   required
                 />
               </label>
               <label className="block space-y-2">
-                <span className="text-sm font-medium text-ink">组织名称</span>
-                <input
-                  className="input-base"
-                  value={form.organization_name}
-                  onChange={(event) =>
-                    updateField("organization_name", event.target.value)
-                  }
-                  placeholder="例如：增长实验室"
-                />
-              </label>
-              <label className="block space-y-2">
-                <span className="text-sm font-medium text-ink">公司 / 团队</span>
+                <span className="text-sm font-medium text-ink">公司或项目</span>
                 <input
                   className="input-base"
                   value={form.company}
                   onChange={(event) => updateField("company", event.target.value)}
-                  placeholder="公司名称"
+                  placeholder="例如：独立工作室"
                 />
               </label>
             </>
@@ -203,15 +209,28 @@ export default function LoginPage() {
             </p>
           ) : null}
 
-          <button type="submit" className="button-primary w-full justify-center" disabled={isPending}>
+          <button
+            type="submit"
+            className="button-primary w-full justify-center"
+            disabled={isPending}
+          >
             {isPending
               ? "正在处理..."
               : mode === "login"
-                ? "登录进入工作台"
-                : "注册并创建工作台"}
+                ? "进入控制台"
+                : "创建我的 Super OS 空间"}
           </button>
         </form>
       </section>
+    </div>
+  );
+}
+
+function RitualCard({ title, detail }: { title: string; detail: string }) {
+  return (
+    <div className="rounded-[1.25rem] border border-white/10 bg-white/6 px-4 py-4">
+      <p className="text-sm font-semibold text-white">{title}</p>
+      <p className="mt-2 text-sm leading-6 text-slate-300">{detail}</p>
     </div>
   );
 }

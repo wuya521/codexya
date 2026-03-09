@@ -252,6 +252,19 @@ class AdminUserUpdateRequest(StrictBaseModel):
     monthly_usage: int | None = Field(default=None, ge=0)
 
 
+class AdminUserCreateRequest(StrictBaseModel):
+    name: str
+    email: str
+    company: str = ""
+    password: str = Field(min_length=8)
+    role: UserRole = "user"
+    plan_id: str = "plan-free"
+
+
+class AdminUserDeleteResponse(StrictBaseModel):
+    message: str
+
+
 class AdminPlanUpdateRequest(StrictBaseModel):
     name: str | None = None
     description: str | None = None

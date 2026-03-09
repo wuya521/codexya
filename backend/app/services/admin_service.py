@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.models.db_models import AuditLogModel, SubscriptionModel, UserModel
 from app.schemas.account import (
+    AdminUserCreateRequest,
+    AdminUserDeleteResponse,
     AdminOrganizationRecord,
     AdminOverviewRecord,
     AdminPlanRecord,
@@ -22,6 +24,7 @@ from app.services.account_service import (
     list_admin_users as list_account_admin_users,
     list_plans
 )
+from app.services.auth_service import create_password_hash, slugify
 from app.services.analysis_job_service import list_admin_analysis_jobs
 from app.services.model_profile_service import get_allowed_model_profiles
 from app.services.repository import repository
@@ -33,6 +36,102 @@ def get_admin_overview(db: Session) -> AdminOverviewRecord:
 
 def list_admin_users(db: Session) -> list[AdminUserRecord]:
     return list_account_admin_users(db)
+
+
+def create_admin_user(
+    db: Session,
+    actor: UserModel,
+    payload: AdminUserCreateRequest
+) -> AdminUserRecord:
+    email = payload.email.lower().strip()
+    if repository.get_user_by_email(db, email) is not None:
+        raise ValueError("该邮箱已存在")
+    if repository.get_auth_account_by_email(db, email) is not None:
+        raise ValueError("该邮箱已存在")
+
+    plan = repository.get_plan(db, payload.plan_id)
+    if plan is None:
+        raise ValueError("目标套餐不存在")
+
+    now = datetime.now(timezone.utc)
+    user = repository.create_user(
+        db,
+        UserModel(
+            id=f"user-{uuid4().hex[:10]}",
+            name=payload.name.strip(),
+            email=email,
+            company=payload.company.strip(),
+            role=payload.role,
+            plan_id=plan.id,
+            monthly_analysis_usage=0,
+            last_usage_reset_at=now,
+            last_active_at=now
+        )
+    )
+
+    password_hash, salt = create_password_hash(payload.password)
+    from app.models.db_models import AuthAccountModel, OrganizationMemberModel, OrganizationModel
+
+    repository.create_auth_account(
+        db,
+        AuthAccountModel(
+            user_id=user.id,
+            email=email,
+            password_hash=password_hash,
+            password_salt=salt,
+            auth_mode="password",
+            status="active"
+        )
+    )
+    workspace_name = f"Super OS 空间 · {user.name}"
+    organization = repository.create_organization(
+        db,
+        OrganizationModel(
+            id=f"org-{uuid4().hex[:10]}",
+            name=workspace_name,
+            slug=slugify(f"{workspace_name}-{user.id[-4:]}"),
+            owner_user_id=user.id
+        )
+    )
+    repository.create_organization_member(
+        db,
+        OrganizationMemberModel(
+            id=f"member-{uuid4().hex[:10]}",
+            organization_id=organization.id,
+            user_id=user.id,
+            role="owner"
+        )
+    )
+    repository.create_or_replace_subscription(
+        db,
+        SubscriptionModel(
+            id=f"subscription-{organization.id}",
+            organization_id=organization.id,
+            plan_id=plan.id,
+            billing_cycle="monthly",
+            status="active",
+            amount=plan.monthly_price,
+            currency="CNY",
+            provider="manual",
+            cancel_at_period_end=False,
+            current_period_start=now,
+            current_period_end=now + timedelta(days=30)
+        )
+    )
+    repository.create_audit_log(
+        db,
+        AuditLogModel(
+            id=f"audit-{uuid4().hex[:10]}",
+            actor_user_id=actor.id,
+            organization_id=organization.id,
+            action="admin.user_created",
+            entity_type="user",
+            entity_id=user.id,
+            summary=f"{actor.name} 创建了账号 {user.email}",
+            metadata_payload={"plan_id": plan.id, "role": user.role}
+        )
+    )
+    return _serialize_admin_user(db, user)
 
 
 def list_admin_organizations(db: Session) -> list[AdminOrganizationRecord]:
@@ -175,6 +274,67 @@ def update_admin_user(
         )
 
     return _serialize_admin_user(db, user)
+
+
+def delete_admin_user(
+    db: Session,
+    actor: UserModel,
+    user_id: str
+) -> AdminUserDeleteResponse:
+    target = repository.get_user(db, user_id)
+    if target is None:
+        raise ValueError("目标用户不存在")
+    if target.id == actor.id:
+        raise ValueError("不能删除当前登录管理员")
+    if target.id == "demo-admin":
+        raise ValueError("创始者账号不能删除")
+
+    memberships = repository.list_memberships_for_user(db, target.id)
+    owned_organizations = []
+    for membership in memberships:
+        organization = repository.get_organization(db, membership.organization_id)
+        if organization is None:
+            continue
+        if organization.owner_user_id == target.id:
+            member_count = len(repository.list_organization_members(db, organization.id))
+            if member_count > 1:
+                raise ValueError("该用户仍拥有多成员空间，请先清理成员或转移归属")
+            owned_organizations.append(organization)
+
+    repository.delete_session_tokens_by_user_id(db, target.id)
+    repository.delete_analysis_jobs_by_user_id(db, target.id)
+    repository.delete_orders_by_user_id(db, target.id)
+    repository.delete_analysis_ownerships_by_user_id(db, target.id)
+
+    for organization in owned_organizations:
+        repository.delete_analysis_jobs_by_organization(db, organization.id)
+        repository.delete_orders_by_organization(db, organization.id)
+        repository.delete_subscriptions_for_organization(db, organization.id)
+        repository.delete_analysis_ownerships_by_organization(db, organization.id)
+        repository.delete_audit_logs_by_organization(db, organization.id)
+        repository.delete_memberships_for_organization(db, organization.id)
+        repository.delete_organization(db, organization.id)
+
+    repository.delete_audit_logs_by_actor(db, target.id)
+    repository.delete_memberships_for_user(db, target.id)
+    repository.delete_auth_account(db, target.id)
+    repository.delete_user(db, target.id)
+    repository.delete_analyses(db, repository.list_orphaned_analysis_ids(db))
+
+    repository.create_audit_log(
+        db,
+        AuditLogModel(
+            id=f"audit-{uuid4().hex[:10]}",
+            actor_user_id=actor.id,
+            organization_id="",
+            action="admin.user_deleted",
+            entity_type="user",
+            entity_id=user_id,
+            summary=f"{actor.name} 删除了账号 {target.email}",
+            metadata_payload={"email": target.email}
+        )
+    )
+    return AdminUserDeleteResponse(message=f"已删除账号 {target.email}")
 
 
 def update_admin_plan(

@@ -1,15 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { PageStatus } from "@/components/page-status";
+import { PaginationControls } from "@/components/pagination-controls";
 import { SectionCard } from "@/components/section-card";
-import { getAccountOverview, getMyAnalyses, getMyAnalysisJobs, getSession } from "@/lib/api";
+import {
+  getAccountOverview,
+  getMyAnalyses,
+  getMyAnalysisJobs,
+  getSession
+} from "@/lib/api";
 import {
   formatDateTime,
   getJobStatusLabel,
-  getModelProfileLabel
+  getModelProfileLabel,
+  getOptimizationLabel,
+  sanitizeAnalysisTitle
 } from "@/lib/display";
 import type { AccountOverviewRecord, CurrentUserRecord } from "@/types/account";
 import type { AnalysisJobRecord, AnalysisRecord } from "@/types/analysis";
@@ -21,6 +29,8 @@ export default function WorkspacePage() {
   const [jobs, setJobs] = useState<AnalysisJobRecord[]>([]);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const pageSize = 5;
 
   useEffect(() => {
     let mounted = true;
@@ -51,12 +61,27 @@ export default function WorkspacePage() {
     };
   }, []);
 
+  const activeJobs = useMemo(
+    () => jobs.filter((job) => job.status === "queued" || job.status === "running"),
+    [jobs]
+  );
+  const totalPages = Math.max(1, Math.ceil(analyses.length / pageSize));
+  const pagedAnalyses = analyses.slice((page - 1) * pageSize, page * pageSize);
+  const nextJob = activeJobs[0] ?? null;
+  const nextOrder = overview?.recent_orders[0] ?? null;
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
   if (isLoading) {
     return (
       <PageStatus
-        eyebrow="工作台"
-        title="正在加载你的工作台"
-        description="系统正在拉取真实分析、异步任务、组织和订阅数据。"
+        eyebrow="Super OS"
+        title="正在为你整理控制台"
+        description="系统正在同步你的真实推演、套餐额度、异步任务和购买状态。"
       />
     );
   }
@@ -64,137 +89,190 @@ export default function WorkspacePage() {
   if (!sessionUser || !overview) {
     return (
       <PageStatus
-        eyebrow="工作台"
-        title="个人与组织工作台"
-        description={error || "请先登录，再查看你的私有分析、任务和组织信息。"}
+        eyebrow="Super OS"
+        title="你的私有控制台"
+        description={error || "请先登录，再查看你的推演记录、购买状态和当前任务。"}
         actionHref="/login"
         actionLabel="去登录"
       />
     );
   }
 
-  const activeJobs = jobs.filter(
-    (job) => job.status !== "completed" || !job.result_analysis_id
-  );
-
   return (
     <div className="space-y-8">
-      <section className="max-w-4xl">
-        <p className="eyebrow">工作台</p>
-        <h1 className="display-title mt-4 text-4xl font-semibold text-ink">
-          {sessionUser.name} 的决策工作台
-        </h1>
-        <p className="mt-4 text-base leading-7 text-muted">
-          这里聚合你的推演结果、异步任务、组织状态和套餐额度，是实际使用时的主控制面板。
-        </p>
-      </section>
+      <section className="grid gap-6 rounded-[2rem] border border-line bg-panel p-7 shadow-panel lg:grid-cols-[1.2fr_0.8fr]">
+        <div>
+          <p className="eyebrow">Super OS</p>
+          <h1 className="display-title mt-4 text-4xl font-semibold text-ink">
+            欢迎回来，{sessionUser.name}
+          </h1>
+          <p className="mt-4 max-w-3xl text-base leading-7 text-muted">
+            这里不是信息堆场，而是你当前决策节奏的主控台。先看任务，再看路径，最后处理购买和额度。
+          </p>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard label="当前套餐" value={sessionUser.plan.name} />
-        <MetricCard
-          label="本月额度"
-          value={`${sessionUser.monthly_usage} / ${sessionUser.monthly_limit}`}
-        />
-        <MetricCard label="剩余额度" value={String(sessionUser.remaining_quota)} />
-        <MetricCard label="活动任务" value={String(sessionUser.active_job_count)} />
-        <MetricCard
-          label="组织"
-          value={sessionUser.organization?.name ?? "未绑定"}
-        />
-      </section>
-
-      <div className="grid gap-6 lg:grid-cols-[1.02fr_0.98fr]">
-        <SectionCard
-          title="进行中的任务"
-          eyebrow="Queue"
-          description="不再让长推理卡住页面，所有长任务都进入后台队列。"
-        >
-          <div className="space-y-4">
-            {activeJobs.length ? (
-              activeJobs.slice(0, 6).map((job) => (
-                <Link
-                  key={job.id}
-                  href={job.result_analysis_id ? `/analysis/${job.result_analysis_id}` : `/jobs/${job.id}`}
-                  className="block rounded-[1.25rem] border border-line bg-canvas px-5 py-4"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-base font-semibold text-ink">{job.title}</p>
-                      <p className="mt-1 text-sm text-muted">
-                        {getModelProfileLabel(job.model_profile)} / {getJobStatusLabel(job.status)}
-                      </p>
-                    </div>
-                    <p className="text-sm text-ink">{job.progress}%</p>
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-muted">{job.step}</p>
-                </Link>
-              ))
-            ) : (
-              <div className="rounded-[1.25rem] border border-dashed border-line bg-canvas p-5 text-sm text-muted">
-                当前没有进行中的任务。你在推演页提交后，这里会实时显示进度。
-              </div>
-            )}
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link href="/forecast" className="button-primary">
+              发起走向预测
+            </Link>
+            <Link href="/pathfinder" className="button-secondary">
+              规划最佳路径
+            </Link>
+            <Link href="/templates" className="button-secondary">
+              套用模板
+            </Link>
           </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <WorkspaceMetric label="当前套餐" value={sessionUser.plan.name} />
+          <WorkspaceMetric
+            label="剩余额度"
+            value={`${sessionUser.remaining_quota} 次`}
+          />
+          <WorkspaceMetric
+            label="进行中任务"
+            value={`${activeJobs.length} 个`}
+          />
+          <WorkspaceMetric
+            label="已保存结果"
+            value={`${analyses.length} 条`}
+          />
+        </div>
+      </section>
+
+      <div className="grid gap-6 lg:grid-cols-[1.08fr_0.92fr]">
+        <SectionCard
+          title="当前焦点"
+          eyebrow="Now"
+          description="优先处理眼前最重要的一件事，而不是被所有模块同时拉扯。"
+        >
+          {nextJob ? (
+            <div className="rounded-[1.4rem] border border-brand/20 bg-brand/10 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-ink">{nextJob.title}</p>
+                  <p className="mt-2 text-sm leading-6 text-muted">
+                    {nextJob.step}
+                  </p>
+                </div>
+                <span className="status-pill">
+                  {getJobStatusLabel(nextJob.status)} / {nextJob.progress}%
+                </span>
+              </div>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/70">
+                <div
+                  className="h-full rounded-full bg-[linear-gradient(90deg,#17324a,#b35c34)]"
+                  style={{ width: `${nextJob.progress}%` }}
+                />
+              </div>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <Link
+                  href={nextJob.result_analysis_id ? `/analysis/${nextJob.result_analysis_id}` : `/jobs/${nextJob.id}`}
+                  className="button-primary"
+                >
+                  打开任务
+                </Link>
+                <span className="text-sm text-muted">
+                  {getModelProfileLabel(nextJob.model_profile)} / {nextJob.selected_model}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-[1.35rem] border border-dashed border-line bg-canvas p-5 text-sm leading-6 text-muted">
+              当前没有排队任务。你可以直接从模板开始，或者针对手头最关键的问题发起一轮新的推演。
+            </div>
+          )}
         </SectionCard>
 
         <SectionCard
-          title="组织与套餐状态"
+          title="账户节奏"
           eyebrow="Account"
-          description="在一个面板里看清组织、角色、并发和可用模型。"
+          description="把套餐、购买和可用模型放到一眼能看清的位置。"
         >
-          <div className="space-y-4 text-sm leading-6 text-muted">
-            <InfoCard label="组织名称" value={overview.organization?.name ?? "未绑定组织"} />
-            <InfoCard label="组织角色" value={sessionUser.organization_role ?? "未设置"} />
-            <InfoCard label="并发上限" value={`${sessionUser.plan.max_concurrent_jobs} 个任务`} />
+          <div className="space-y-4">
             <InfoCard
               label="可用模型档位"
               value={sessionUser.plan.allowed_model_profiles
                 .map((item) => getModelProfileLabel(item))
                 .join(" / ")}
             />
+            <InfoCard
+              label="下个周期节点"
+              value={
+                overview.active_subscription
+                  ? formatDateTime(overview.active_subscription.current_period_end)
+                  : "当前没有订阅周期"
+              }
+            />
+            <InfoCard
+              label="最近一次购买"
+              value={
+                nextOrder
+                  ? `${nextOrder.plan_name} / ${formatDateTime(nextOrder.created_at)}`
+                  : "还没有购买记录"
+              }
+            />
+            <Link href="/account" className="button-secondary w-full justify-center">
+              管理套餐与购买
+            </Link>
           </div>
         </SectionCard>
       </div>
 
       <SectionCard
-        title="最近结果"
-        eyebrow="Analyses"
-        description="保存下来的分析和重演结果会在这里持续积累。"
+        title="最近推演"
+        eyebrow="Archive"
+        description="按页整理你的结果，不再一股脑全部堆在页面里。"
       >
         <div className="space-y-4">
-          {analyses.length ? (
-            analyses.map((analysis) => (
+          {pagedAnalyses.length ? (
+            pagedAnalyses.map((analysis) => (
               <Link
                 key={analysis.id}
                 href={`/analysis/${analysis.id}`}
-                className="block rounded-[1.25rem] border border-line bg-canvas px-5 py-4"
+                className="block rounded-[1.35rem] border border-line bg-canvas px-5 py-4 transition hover:border-brand/35 hover:-translate-y-0.5"
               >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-base font-semibold text-ink">{analysis.title}</p>
-                  <p className="text-sm text-muted">
-                    {formatDateTime(analysis.updated_at)}
-                  </p>
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-ink">
+                      {sanitizeAnalysisTitle(analysis.title)}
+                    </h2>
+                    <p className="mt-2 text-sm leading-6 text-muted">
+                      {analysis.summary}
+                    </p>
+                  </div>
+                  <div className="text-right text-sm text-muted">
+                    <p>{formatDateTime(analysis.updated_at)}</p>
+                    <p className="mt-2 text-ink">
+                      {getOptimizationLabel(analysis.recommended_paths.primary_choice)}
+                    </p>
+                  </div>
                 </div>
-                <p className="mt-3 text-sm leading-6 text-muted">
-                  {analysis.summary}
-                </p>
               </Link>
             ))
           ) : (
-            <div className="rounded-[1.25rem] border border-dashed border-line bg-canvas p-5 text-sm text-muted">
-              还没有真实推演记录。去首页或推演页发起第一条任务后，这里会自动更新。
+            <div className="rounded-[1.35rem] border border-dashed border-line bg-canvas p-5 text-sm text-muted">
+              还没有可展示的推演结果。发起第一条任务后，这里会自动更新。
             </div>
           )}
+        </div>
+        <div className="mt-5">
+          <PaginationControls
+            page={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            itemLabel="最近推演"
+          />
         </div>
       </SectionCard>
     </div>
   );
 }
 
-function MetricCard({ label, value }: { label: string; value: string }) {
+function WorkspaceMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[1.5rem] border border-line bg-panel p-5 shadow-panel">
-      <p className="text-xs uppercase tracking-[0.22em] text-muted">{label}</p>
+    <div className="rounded-[1.3rem] border border-line bg-canvas p-4">
+      <p className="text-xs tracking-[0.18em] text-muted">{label}</p>
       <p className="mt-3 text-2xl font-semibold text-ink">{value}</p>
     </div>
   );
@@ -202,9 +280,9 @@ function MetricCard({ label, value }: { label: string; value: string }) {
 
 function InfoCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[1.25rem] border border-line bg-canvas p-5">
-      <p className="font-semibold text-ink">{label}</p>
-      <p className="mt-2">{value}</p>
+    <div className="rounded-[1.25rem] border border-line bg-canvas p-4">
+      <p className="text-xs tracking-[0.18em] text-muted">{label}</p>
+      <p className="mt-2 text-sm leading-6 text-ink">{value}</p>
     </div>
   );
 }

@@ -4,8 +4,14 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import require_admin
 from app.db.session import get_db
 from app.models.db_models import UserModel
-from app.schemas.account import AdminPlanUpdateRequest, AdminUserUpdateRequest
+from app.schemas.account import (
+    AdminPlanUpdateRequest,
+    AdminUserCreateRequest,
+    AdminUserUpdateRequest
+)
 from app.services.admin_service import (
+    create_admin_user,
+    delete_admin_user,
     get_admin_overview,
     list_admin_analysis_jobs,
     list_admin_audits,
@@ -36,6 +42,18 @@ def get_users(
     return list_admin_users(db)
 
 
+@router.post("/users", summary="创建后台用户")
+def post_user(
+    payload: AdminUserCreateRequest,
+    db: Session = Depends(get_db),
+    admin: UserModel = Depends(require_admin)
+):
+    try:
+        return create_admin_user(db, admin, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.patch("/users/{user_id}", summary="更新后台用户配置")
 def patch_user(
     user_id: str,
@@ -45,6 +63,18 @@ def patch_user(
 ):
     try:
         return update_admin_user(db, admin, user_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/users/{user_id}", summary="删除后台用户")
+def remove_user(
+    user_id: str,
+    db: Session = Depends(get_db),
+    admin: UserModel = Depends(require_admin)
+):
+    try:
+        return delete_admin_user(db, admin, user_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

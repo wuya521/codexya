@@ -31,29 +31,30 @@ export function ScenarioPanel({ scenarios }: ScenarioPanelProps) {
             </span>
           </div>
 
-          <div className="mt-4 rounded-full bg-panel p-1">
-            <div className="relative h-2 rounded-full bg-white/70">
+          <div className="mt-4 rounded-[1.1rem] border border-line bg-panel/70 p-4">
+            <div className="relative h-3 rounded-full bg-white/75">
               <div
-                className="absolute left-0 top-0 h-full rounded-full bg-[linear-gradient(90deg,#21486b,#b35c34)]"
+                className="absolute left-0 top-0 h-full rounded-full bg-[linear-gradient(90deg,#1d4768,#a85f34)]"
                 style={{ width: asPercent(scenario.probability_high) }}
               />
               <div
-                className="absolute top-[-4px] h-4 w-4 rounded-full border border-white bg-brand shadow"
+                className="absolute top-[-2px] h-4 w-4 rounded-full border border-white bg-brand shadow"
                 style={{ left: `calc(${asPercent(scenario.probability_low)} - 8px)` }}
               />
             </div>
+            <p className="mt-4 text-sm leading-6 text-muted">
+              {scenario.trajectory}
+            </p>
           </div>
-
-          <p className="mt-4 text-sm leading-6 text-muted">
-            {scenario.trajectory}
-          </p>
 
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <div className="rounded-[1rem] border border-line bg-panel/60 p-4">
               <p className="text-xs tracking-[0.18em] text-muted">触发条件</p>
               <ul className="mt-3 space-y-2 text-sm leading-6 text-ink/85">
                 {scenario.trigger_conditions.map((condition) => (
-                  <li key={condition}>{condition}</li>
+                  <li key={condition} className="rounded-[0.9rem] bg-white/65 px-3 py-2">
+                    {condition}
+                  </li>
                 ))}
               </ul>
             </div>
@@ -61,7 +62,9 @@ export function ScenarioPanel({ scenarios }: ScenarioPanelProps) {
               <p className="text-xs tracking-[0.18em] text-muted">观察信号</p>
               <ul className="mt-3 space-y-2 text-sm leading-6 text-ink/85">
                 {scenario.signals.map((signal) => (
-                  <li key={signal}>{signal}</li>
+                  <li key={signal} className="rounded-[0.9rem] bg-white/65 px-3 py-2">
+                    {signal}
+                  </li>
                 ))}
               </ul>
             </div>

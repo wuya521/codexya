@@ -118,50 +118,18 @@ def bootstrap_account_data(db: Session) -> None:
         [
             UserModel(
                 id="demo-admin",
-                name="创始人演示账号",
+                name="Super OS 创始者",
                 email="founder@inference.local",
-                company="第一性原理实验室",
+                company="Super OS 超级OS",
                 role="admin",
                 plan_id="plan-enterprise",
                 monthly_analysis_usage=12,
                 last_usage_reset_at=now,
                 last_active_at=now
-            ),
-            UserModel(
-                id="demo-vip",
-                name="业务负责人",
-                email="vip@inference.local",
-                company="增长事业部",
-                role="user",
-                plan_id="plan-vip",
-                monthly_analysis_usage=58,
-                last_usage_reset_at=now,
-                last_active_at=now
-            ),
-            UserModel(
-                id="demo-pro",
-                name="独立顾问",
-                email="pro@inference.local",
-                company="个人",
-                role="user",
-                plan_id="plan-pro",
-                monthly_analysis_usage=16,
-                last_usage_reset_at=now,
-                last_active_at=now
-            ),
-            UserModel(
-                id="demo-free",
-                name="试用用户",
-                email="free@inference.local",
-                company="个人",
-                role="user",
-                plan_id="plan-free",
-                monthly_analysis_usage=6,
-                last_usage_reset_at=now,
-                last_active_at=now
             )
         ]
     )
+    _prune_legacy_demo_accounts(db)
     bootstrap_auth_data(db)
     _bootstrap_organizations(db, now)
     _bootstrap_subscriptions_and_orders(db, now)
@@ -741,27 +709,9 @@ def _bootstrap_organizations(db: Session, now: datetime) -> None:
         [
             OrganizationModel(
                 id="org-lab",
-                name="第一性原理实验室",
-                slug="first-principles-lab",
+                name="Super OS 超级OS",
+                slug="super-os",
                 owner_user_id="demo-admin"
-            ),
-            OrganizationModel(
-                id="org-growth",
-                name="增长事业部",
-                slug="growth-business-unit",
-                owner_user_id="demo-vip"
-            ),
-            OrganizationModel(
-                id="org-pro",
-                name="顾问工作室",
-                slug="consulting-studio",
-                owner_user_id="demo-pro"
-            ),
-            OrganizationModel(
-                id="org-free",
-                name="个人试用空间",
-                slug="personal-trial-space",
-                owner_user_id="demo-free"
             )
         ]
     )
@@ -772,34 +722,6 @@ def _bootstrap_organizations(db: Session, now: datetime) -> None:
                 id="member-lab-admin",
                 organization_id="org-lab",
                 user_id="demo-admin",
-                role="owner",
-                created_at=now
-            ),
-            OrganizationMemberModel(
-                id="member-lab-vip",
-                organization_id="org-lab",
-                user_id="demo-vip",
-                role="admin",
-                created_at=now
-            ),
-            OrganizationMemberModel(
-                id="member-growth-vip",
-                organization_id="org-growth",
-                user_id="demo-vip",
-                role="owner",
-                created_at=now
-            ),
-            OrganizationMemberModel(
-                id="member-pro-owner",
-                organization_id="org-pro",
-                user_id="demo-pro",
-                role="owner",
-                created_at=now
-            ),
-            OrganizationMemberModel(
-                id="member-free-owner",
-                organization_id="org-free",
-                user_id="demo-free",
                 role="owner",
                 created_at=now
             )
@@ -818,45 +740,6 @@ def _bootstrap_subscriptions_and_orders(db: Session, now: datetime) -> None:
                 billing_cycle="monthly",
                 status="active",
                 amount=1999,
-                currency="CNY",
-                provider="manual",
-                cancel_at_period_end=False,
-                current_period_start=now,
-                current_period_end=now + timedelta(days=30)
-            ),
-            SubscriptionModel(
-                id="subscription-org-growth",
-                organization_id="org-growth",
-                plan_id="plan-vip",
-                billing_cycle="yearly",
-                status="active",
-                amount=2999,
-                currency="CNY",
-                provider="manual",
-                cancel_at_period_end=False,
-                current_period_start=now,
-                current_period_end=now + timedelta(days=365)
-            ),
-            SubscriptionModel(
-                id="subscription-org-pro",
-                organization_id="org-pro",
-                plan_id="plan-pro",
-                billing_cycle="monthly",
-                status="active",
-                amount=99,
-                currency="CNY",
-                provider="manual",
-                cancel_at_period_end=False,
-                current_period_start=now,
-                current_period_end=now + timedelta(days=30)
-            ),
-            SubscriptionModel(
-                id="subscription-org-free",
-                organization_id="org-free",
-                plan_id="plan-free",
-                billing_cycle="monthly",
-                status="active",
-                amount=0,
                 currency="CNY",
                 provider="manual",
                 cancel_at_period_end=False,
@@ -881,34 +764,6 @@ def _bootstrap_subscriptions_and_orders(db: Session, now: datetime) -> None:
                 provider_reference="seed-enterprise-001",
                 metadata_payload={"seed": True},
                 paid_at=now
-            ),
-            BillingOrderModel(
-                id="order-vip-001",
-                organization_id="org-growth",
-                user_id="demo-vip",
-                plan_id="plan-vip",
-                billing_cycle="yearly",
-                amount=2999,
-                currency="CNY",
-                status="paid",
-                provider="manual",
-                provider_reference="seed-vip-001",
-                metadata_payload={"seed": True},
-                paid_at=now
-            ),
-            BillingOrderModel(
-                id="order-pro-001",
-                organization_id="org-pro",
-                user_id="demo-pro",
-                plan_id="plan-pro",
-                billing_cycle="monthly",
-                amount=99,
-                currency="CNY",
-                status="paid",
-                provider="manual",
-                provider_reference="seed-pro-001",
-                metadata_payload={"seed": True},
-                paid_at=now
             )
         ]
     )
@@ -928,28 +783,32 @@ def _bootstrap_audit_logs(db: Session, now: datetime) -> None:
                 summary="企业版订阅已初始化",
                 metadata_payload={"seed": True},
                 created_at=now
-            ),
-            AuditLogModel(
-                id="audit-seed-vip",
-                actor_user_id="demo-vip",
-                organization_id="org-growth",
-                action="billing.subscription_seeded",
-                entity_type="subscription",
-                entity_id="subscription-org-growth",
-                summary="VIP 年付订阅已初始化",
-                metadata_payload={"seed": True},
-                created_at=now
-            ),
-            AuditLogModel(
-                id="audit-seed-member",
-                actor_user_id="demo-admin",
-                organization_id="org-lab",
-                action="organization.member_seeded",
-                entity_type="organization_member",
-                entity_id="member-lab-vip",
-                summary="已将业务负责人加入企业组织",
-                metadata_payload={"seed": True},
-                created_at=now
             )
         ]
     )
+
+
+def _prune_legacy_demo_accounts(db: Session) -> None:
+    legacy_users = ("demo-vip", "demo-pro", "demo-free")
+    legacy_organizations = ("org-growth", "org-pro", "org-free")
+
+    for organization_id in legacy_organizations:
+        repository.delete_analysis_jobs_by_organization(db, organization_id)
+        repository.delete_orders_by_organization(db, organization_id)
+        repository.delete_subscriptions_for_organization(db, organization_id)
+        repository.delete_analysis_ownerships_by_organization(db, organization_id)
+        repository.delete_audit_logs_by_organization(db, organization_id)
+        repository.delete_memberships_for_organization(db, organization_id)
+        repository.delete_organization(db, organization_id)
+
+    for user_id in legacy_users:
+        repository.delete_session_tokens_by_user_id(db, user_id)
+        repository.delete_analysis_jobs_by_user_id(db, user_id)
+        repository.delete_orders_by_user_id(db, user_id)
+        repository.delete_analysis_ownerships_by_user_id(db, user_id)
+        repository.delete_audit_logs_by_actor(db, user_id)
+        repository.delete_memberships_for_user(db, user_id)
+        repository.delete_auth_account(db, user_id)
+        repository.delete_user(db, user_id)
+
+    repository.delete_analyses(db, repository.list_orphaned_analysis_ids(db))

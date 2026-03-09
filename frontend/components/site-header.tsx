@@ -10,16 +10,14 @@ import type { CurrentUserRecord } from "@/types/account";
 const publicLinks = [
   { href: "/", label: "首页" },
   { href: "/forecast", label: "走向预测" },
-  { href: "/pathfinder", label: "最佳路径" },
+  { href: "/pathfinder", label: "路径规划" },
   { href: "/templates", label: "模板库" },
-  { href: "/history", label: "历史记录" }
+  { href: "/history", label: "历史推演" }
 ];
 
 const privateLinks = [
-  { href: "/workspace", label: "工作台" },
-  { href: "/team", label: "团队" },
-  { href: "/account", label: "会员中心" },
-  { href: "/settings", label: "设置" }
+  { href: "/workspace", label: "控制台" },
+  { href: "/account", label: "购买套餐" }
 ];
 
 function isActive(pathname: string, href: string) {
@@ -67,45 +65,38 @@ export function SiteHeader() {
       ...publicLinks,
       ...(sessionUser ? privateLinks : []),
       ...(sessionUser?.can_access_admin
-        ? [{ href: "/admin", label: "运营后台" }]
+        ? [{ href: "/admin", label: "运营台" }]
         : [])
     ],
     [sessionUser]
   );
 
   return (
-    <header className="sticky top-0 z-30 border-b border-line/70 bg-[rgba(247,243,236,0.82)] backdrop-blur-xl">
+    <header className="sticky top-0 z-30 border-b border-line/70 bg-[rgba(245,240,232,0.84)] backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-4 lg:px-10">
         <div className="flex items-center justify-between gap-4">
           <Link href="/" className="flex min-w-0 items-center gap-3">
-            <span className="flex h-12 w-12 items-center justify-center rounded-[1.15rem] border border-white/40 bg-[linear-gradient(135deg,#13263b,#21486b)] text-sm font-semibold text-white shadow-panel">
-              FP
+            <span className="flex h-12 w-12 items-center justify-center rounded-[1.15rem] border border-white/50 bg-[linear-gradient(135deg,#102235,#21506f)] text-sm font-semibold text-white shadow-panel">
+              SO
             </span>
             <div className="min-w-0">
               <p className="text-[0.68rem] tracking-[0.32em] text-muted">
-                STRATEGY OS
+                SUPER OS
               </p>
               <p className="truncate text-sm font-semibold text-ink">
-                First Principles Strategy OS
+                超级OS 决策控制台
               </p>
             </div>
           </Link>
 
           <div className="flex items-center gap-3">
             {isLoading ? (
-              <span className="status-pill">加载会话</span>
+              <span className="status-pill">同步会话</span>
             ) : sessionUser ? (
               <>
                 <div className="hidden rounded-full border border-line bg-white/70 px-4 py-2 text-right shadow-panel sm:block">
-                  <p className="text-sm font-semibold text-ink">
-                    {sessionUser.name}
-                  </p>
-                  <p className="text-xs text-muted">
-                    {sessionUser.plan.name}
-                    {sessionUser.organization
-                      ? ` / ${sessionUser.organization.name}`
-                      : ""}
-                  </p>
+                  <p className="text-sm font-semibold text-ink">{sessionUser.name}</p>
+                  <p className="text-xs text-muted">{sessionUser.plan.name}</p>
                 </div>
                 <button
                   type="button"
@@ -118,10 +109,10 @@ export function SiteHeader() {
             ) : (
               <>
                 <Link href="/templates" className="button-ghost hidden sm:inline-flex">
-                  浏览模板
+                  看模板
                 </Link>
                 <Link href="/login" className="button-primary">
-                  登录 / 注册
+                  进入 Super OS
                 </Link>
               </>
             )}
@@ -137,8 +128,8 @@ export function SiteHeader() {
                 href={link.href}
                 className={`whitespace-nowrap rounded-full px-4 py-2 transition ${
                   active
-                    ? "bg-[linear-gradient(135deg,#13263b,#21486b)] text-white shadow-panel"
-                    : "border border-line bg-white/65 text-muted hover:border-brand/30 hover:text-ink"
+                    ? "bg-[linear-gradient(135deg,#102235,#21506f)] text-white shadow-panel"
+                    : "border border-line bg-white/70 text-muted hover:border-brand/30 hover:text-ink"
                 }`}
               >
                 {link.label}

@@ -36,28 +36,28 @@ const modelProfiles: Array<{
   {
     value: "fast",
     title: "极速",
-    description: "优先拿到方向感，适合先做一轮判断校准。",
-    eta: "通常最先出结果"
+    description: "优先拿到方向感，适合先做一轮快速校准。",
+    eta: "通常最快返回"
   },
   {
     value: "balanced",
     title: "平衡",
     description: "默认档位，兼顾速度、细节和结果稳定性。",
-    eta: "建议作为常用档位"
+    eta: "日常最推荐"
   },
   {
     value: "deep",
     title: "深度推理",
     description: "适合高价值、高不确定问题，耗时会明显更长。",
-    eta: "建议只在关键问题时使用"
+    eta: "关键问题再开启"
   }
 ];
 
 const queueSteps = [
-  "1/4 创建任务并写入异步队列",
+  "1/4 写入异步队列，锁定本次任务",
   "2/4 校验套餐额度、并发上限和模型权限",
-  "3/4 调用真实模型生成结构化推演结果",
-  "4/4 自动跳转到任务页并实时刷新进度"
+  "3/4 调用真实模型生成结构化结果",
+  "4/4 跳转到任务页并持续回传进度"
 ];
 
 export function AnalysisForm({ mode }: AnalysisFormProps) {

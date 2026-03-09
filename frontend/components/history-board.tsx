@@ -1,9 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 
-import { formatDateTime, getGenerationModeLabel, getModeLabel } from "@/lib/display";
+import { PaginationControls } from "@/components/pagination-controls";
+import {
+  formatDateTime,
+  getGenerationModeLabel,
+  getModeLabel,
+  sanitizeAnalysisTitle
+} from "@/lib/display";
 import type { AnalysisMode, AnalysisRecord } from "@/types/analysis";
 
 type HistoryBoardProps = {
@@ -23,7 +29,9 @@ function averageConfidence(analyses: AnalysisRecord[]) {
 export function HistoryBoard({ analyses }: HistoryBoardProps) {
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<AnalysisMode | "all">("all");
+  const [page, setPage] = useState(1);
   const deferredQuery = useDeferredValue(query);
+  const pageSize = 8;
 
   const filtered = useMemo(() => {
     return analyses.filter((analysis) => {
@@ -36,15 +44,28 @@ export function HistoryBoard({ analyses }: HistoryBoardProps) {
       return matchesMode && matchesQuery;
     });
   }, [analyses, deferredQuery, mode]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
+
+  useEffect(() => {
+    setPage(1);
+  }, [deferredQuery, mode]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   const forecastCount = analyses.filter((item) => item.mode === "forecast").length;
   const pathCount = analyses.filter((item) => item.mode === "best_path").length;
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 sm:grid-cols-3">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="总记录" value={String(analyses.length)} />
         <MetricCard label="走向预测" value={String(forecastCount)} />
+        <MetricCard label="路径规划" value={String(pathCount)} />
         <MetricCard label="平均置信度" value={`${averageConfidence(analyses)}%`} />
       </section>
 
@@ -67,7 +88,7 @@ export function HistoryBoard({ analyses }: HistoryBoardProps) {
       </div>
 
       <div className="space-y-4">
-        {filtered.map((analysis) => (
+        {paged.map((analysis) => (
           <Link
             key={analysis.id}
             href={`/analysis/${analysis.id}`}
@@ -83,7 +104,7 @@ export function HistoryBoard({ analyses }: HistoryBoardProps) {
                 </span>
               </div>
               <h2 className="mt-4 text-xl font-semibold text-ink">
-                {analysis.title}
+                {sanitizeAnalysisTitle(analysis.title)}
               </h2>
               <p className="mt-3 text-sm leading-6 text-muted">
                 {analysis.summary}
@@ -106,6 +127,13 @@ export function HistoryBoard({ analyses }: HistoryBoardProps) {
           </Link>
         ))}
       </div>
+
+      <PaginationControls
+        page={page}
+        totalPages={totalPages}
+        onPageChange={setPage}
+        itemLabel="历史推演"
+      />
 
       {filtered.length === 0 ? (
         <div className="rounded-[1.6rem] border border-dashed border-line bg-panel p-6 text-sm text-muted">

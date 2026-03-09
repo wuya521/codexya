@@ -45,7 +45,7 @@ export default function AccountPage() {
     loadOverview()
       .catch((caughtError) => {
         if (mounted) {
-          setError(caughtError instanceof Error ? caughtError.message : "会员中心加载失败。");
+          setError(caughtError instanceof Error ? caughtError.message : "套餐页加载失败。");
         }
       })
       .finally(() => {
@@ -62,9 +62,9 @@ export default function AccountPage() {
   if (isLoading) {
     return (
       <PageStatus
-        eyebrow="会员中心"
-        title="正在加载套餐、账单和订阅"
-        description="系统正在拉取你的真实订阅、订单、审计和额度数据。"
+        eyebrow="购买套餐"
+        title="正在加载套餐与购买信息"
+        description="系统正在同步你的额度、订阅、订单和最近任务。"
       />
     );
   }
@@ -72,9 +72,9 @@ export default function AccountPage() {
   if (!sessionUser || !overview) {
     return (
       <PageStatus
-        eyebrow="会员中心"
-        title="套餐、账单和订阅管理"
-        description={error || "请先登录，再查看你的订阅、账单、团队和升级路径。"}
+        eyebrow="购买套餐"
+        title="选择合适的套餐"
+        description={error || "请先登录，再查看你的套餐、订单和升级入口。"}
         actionHref="/login"
         actionLabel="去登录"
       />
@@ -82,123 +82,93 @@ export default function AccountPage() {
   }
 
   const currentUser = overview.user;
+  const nextOrder = overview.recent_orders[0] ?? null;
 
   return (
     <div className="space-y-8">
-      <section className="max-w-4xl">
-        <p className="eyebrow">会员中心</p>
-        <h1 className="display-title mt-4 text-4xl font-semibold text-ink">
-          套餐、额度、模型权限与订阅控制
-        </h1>
-        <p className="mt-4 text-base leading-7 text-muted">
-          这里集中展示当前套餐能力、模型档位、异步并发上限、近期订单和升级路径。
-        </p>
+      <section className="grid gap-6 rounded-[2rem] border border-line bg-panel p-7 shadow-panel lg:grid-cols-[1.06fr_0.94fr]">
+        <div>
+          <p className="eyebrow">购买套餐</p>
+          <h1 className="display-title mt-4 text-4xl font-semibold text-ink">
+            让套餐为使用习惯服务
+          </h1>
+          <p className="mt-4 max-w-3xl text-base leading-7 text-muted">
+            这里聚焦三件事：你现在能做多少、下一步该买什么、最近买过什么。其余系统信息不再抢视线。
+          </p>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <MetricTile label="当前套餐" value={currentUser.plan.name} />
+          <MetricTile label="剩余额度" value={`${currentUser.remaining_quota} 次`} />
+          <MetricTile
+            label="可用模型"
+            value={currentUser.plan.allowed_model_profiles
+              .map((item) => getModelProfileLabel(item))
+              .join(" / ")}
+          />
+          <MetricTile
+            label="并发任务"
+            value={`${currentUser.plan.max_concurrent_jobs} 个`}
+          />
+        </div>
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+      <div className="grid gap-6 lg:grid-cols-[0.98fr_1.02fr]">
         <SectionCard
-          title={currentUser.plan.name}
-          eyebrow="当前账户"
+          title="当前状态"
+          eyebrow="Account"
           aside={
             currentUser.can_access_admin ? (
               <Link href="/admin" className="text-sm text-brand">
-                进入后台
+                打开运营台
               </Link>
             ) : null
           }
         >
-          <div className="space-y-5">
-            <div className="rounded-[1.25rem] border border-line bg-canvas p-5">
-              <p className="text-sm text-muted">{currentUser.company}</p>
-              <h2 className="mt-2 text-2xl font-semibold text-ink">
-                {currentUser.name}
-              </h2>
-              <p className="mt-2 text-sm text-muted">
-                {currentUser.email} / {currentUser.role === "admin" ? "后台管理员" : "普通成员"}
-              </p>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-4">
-              <MetricTile label="本月已用" value={String(currentUser.monthly_usage)} />
-              <MetricTile label="剩余额度" value={String(currentUser.remaining_quota)} />
-              <MetricTile label="并发任务" value={String(currentUser.plan.max_concurrent_jobs)} />
-              <MetricTile label="活动任务" value={String(currentUser.active_job_count)} />
-            </div>
-
-            <div className="space-y-3 rounded-[1.25rem] border border-line bg-canvas p-5 text-sm leading-6 text-muted">
-              <p>当前套餐亮点：{currentUser.plan.highlight}</p>
-              <p>
-                当前组织：{currentUser.organization?.name ?? "未绑定组织"} / 角色{" "}
-                {currentUser.organization_role ?? "未设置"}
-              </p>
-              <p>
-                当前订阅：
-                {overview.active_subscription
-                  ? `${overview.active_subscription.plan_name} / ${overview.active_subscription.billing_cycle}`
-                  : currentUser.plan.name}
-              </p>
-              <p>
-                可用模型：
-                {currentUser.plan.allowed_model_profiles
-                  .map((item) => getModelProfileLabel(item))
-                  .join(" / ")}
-              </p>
-              <p>
-                下个账期结束：
-                {overview.active_subscription
-                  ? ` ${formatDateTime(overview.active_subscription.current_period_end)}`
-                  : " 暂无"}
-              </p>
-            </div>
+          <div className="space-y-4">
+            <InfoCard label="账号" value={`${currentUser.name} / ${currentUser.email}`} />
+            <InfoCard label="套餐亮点" value={currentUser.plan.highlight} />
+            <InfoCard
+              label="当前周期结束"
+              value={
+                overview.active_subscription
+                  ? formatDateTime(overview.active_subscription.current_period_end)
+                  : "当前没有订阅周期"
+              }
+            />
           </div>
         </SectionCard>
 
         <SectionCard
-          title="近期订单、审计与任务"
-          eyebrow="Operations"
-          description="让用户看到自己的订阅动作、队列使用和审计记录，而不是只有一个价格表。"
+          title="最近动作"
+          eyebrow="Recent"
+          description="保持购买、任务和审计的轻量可见，不再堆满整页。"
         >
-          <div className="space-y-4">
-            {overview.recent_orders.slice(0, 3).map((order) => (
-              <div
-                key={order.id}
-                className="rounded-[1.25rem] border border-line bg-canvas p-5"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="font-semibold text-ink">{order.plan_name}</p>
-                  <p className="text-sm text-ink">
-                    {currencyFormatter.format(order.amount)}
-                  </p>
-                </div>
-                <p className="mt-2 text-sm text-muted">
-                  {order.billing_cycle} / {order.status} / {formatDateTime(order.created_at)}
-                </p>
-              </div>
-            ))}
-            <div className="rounded-[1.25rem] border border-line bg-canvas p-5">
-              <p className="font-semibold text-ink">最近任务</p>
-              <div className="mt-3 space-y-3 text-sm leading-6 text-muted">
-                {overview.recent_jobs.slice(0, 3).map((job) => (
-                  <div key={job.id}>
-                    <p className="text-ink">{job.title}</p>
-                    <p className="text-xs text-muted">
-                      {getJobStatusLabel(job.status)} / {getModelProfileLabel(job.model_profile)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="rounded-[1.25rem] border border-line bg-canvas p-5">
-              <p className="font-semibold text-ink">最近审计记录</p>
-              <div className="mt-3 space-y-3 text-sm leading-6 text-muted">
-                {overview.recent_audits.slice(0, 3).map((audit) => (
-                  <div key={audit.id}>
-                    <p className="text-ink">{audit.summary}</p>
-                    <p className="text-xs text-muted">{formatDateTime(audit.created_at)}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <InfoCard
+              label="最近订单"
+              value={
+                nextOrder
+                  ? `${nextOrder.plan_name} / ${currencyFormatter.format(nextOrder.amount)}`
+                  : "还没有订单"
+              }
+            />
+            <InfoCard
+              label="最近任务"
+              value={
+                overview.recent_jobs[0]
+                  ? `${getJobStatusLabel(overview.recent_jobs[0].status)} / ${getModelProfileLabel(overview.recent_jobs[0].model_profile)}`
+                  : "当前没有任务"
+              }
+            />
+            <InfoCard
+              label="最近记录"
+              value={
+                overview.recent_audits[0]
+                  ? overview.recent_audits[0].summary
+                  : "还没有后台动作"
+              }
+            />
           </div>
         </SectionCard>
       </div>
@@ -206,7 +176,7 @@ export default function AccountPage() {
       <SectionCard
         title="套餐矩阵"
         eyebrow="Pricing"
-        description="套餐不仅决定价格，也决定额度、模型权限和并发能力。"
+        description="用户登录后可以直接在这里完成套餐选择或升级。"
       >
         <div className="grid gap-6 xl:grid-cols-4">
           {overview.available_plans.map((plan) => {
@@ -225,12 +195,8 @@ export default function AccountPage() {
                   <p className="text-xs uppercase tracking-[0.24em] text-muted">
                     {plan.highlight}
                   </p>
-                  <h2 className="mt-3 text-2xl font-semibold text-ink">
-                    {plan.name}
-                  </h2>
-                  <p className="mt-3 text-sm leading-6 text-muted">
-                    {plan.description}
-                  </p>
+                  <h2 className="mt-3 text-2xl font-semibold text-ink">{plan.name}</h2>
+                  <p className="mt-3 text-sm leading-6 text-muted">{plan.description}</p>
                 </div>
 
                 <div className="mt-5">
@@ -259,6 +225,7 @@ export default function AccountPage() {
                       .join(" / ")}
                   </p>
                   <p className="mt-2">并发上限：{plan.max_concurrent_jobs}</p>
+                  <p className="mt-2">团队席位：{plan.team_seats}</p>
                 </div>
 
                 <div className="mt-5">
@@ -293,7 +260,16 @@ function MetricTile({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[1.25rem] border border-line bg-canvas p-4">
       <p className="text-xs uppercase tracking-[0.2em] text-muted">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-ink">{value}</p>
+      <p className="mt-2 text-xl font-semibold text-ink">{value}</p>
+    </div>
+  );
+}
+
+function InfoCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[1.25rem] border border-line bg-canvas p-4">
+      <p className="text-xs tracking-[0.18em] text-muted">{label}</p>
+      <p className="mt-2 text-sm leading-6 text-ink">{value}</p>
     </div>
   );
 }

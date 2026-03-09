@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { AnalysisActions } from "@/components/analysis-actions";
+import { AnalysisRoadmapPanel } from "@/components/analysis-roadmap-panel";
 import { CausalGraphPanel } from "@/components/causal-graph-panel";
 import { ScenarioPanel } from "@/components/scenario-panel";
 import { SectionCard } from "@/components/section-card";
@@ -11,7 +12,6 @@ import {
   formatSignedPercent,
   getDirectionLabel,
   getGenerationModeLabel,
-  getHorizonLabel,
   getLevelLabel,
   getModeLabel,
   getModelProfileLabel,
@@ -88,18 +88,42 @@ function VersionMetric({
   );
 }
 
+function ListBlock({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div className="rounded-[1.2rem] border border-line bg-canvas p-4">
+      <p className="text-xs tracking-[0.18em] text-muted">{title}</p>
+      <div className="mt-3 space-y-2">
+        {items.map((item) => (
+          <div
+            key={item}
+            className="rounded-[0.95rem] border border-line bg-panel/65 px-3 py-2 text-sm leading-6 text-ink/85"
+          >
+            {item}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function PathCard({ title, path }: { title: string; path: PathPlan }) {
   return (
     <article className="rounded-[1.4rem] border border-line bg-canvas p-5">
       <p className="text-xs tracking-[0.18em] text-muted">{title}</p>
       <h3 className="mt-2 text-xl font-semibold text-ink">{path.label}</h3>
-      <ol className="mt-4 space-y-3 text-sm leading-6 text-ink/85">
-        {path.steps.map((step) => (
-          <li key={step} className="rounded-[1rem] border border-line bg-panel/60 px-4 py-3">
-            {step}
-          </li>
+      <div className="mt-4 space-y-3">
+        {path.steps.map((step, index) => (
+          <div
+            key={step}
+            className="flex gap-3 rounded-[1rem] border border-line bg-panel/65 px-4 py-3"
+          >
+            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#12263a,#1d4768)] text-xs font-semibold text-white">
+              {index + 1}
+            </span>
+            <p className="text-sm leading-6 text-ink/85">{step}</p>
+          </div>
         ))}
-      </ol>
+      </div>
       <div className="mt-4 flex flex-wrap gap-2">
         {path.tradeoffs.map((tradeoff) => (
           <span
@@ -132,7 +156,7 @@ export function AnalysisResult({ analysis }: AnalysisResultProps) {
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-6 rounded-[2rem] border border-line bg-panel p-7 shadow-panel lg:grid-cols-[1.35fr_0.65fr]">
+      <section className="grid gap-6 rounded-[2rem] border border-line bg-panel p-7 shadow-panel lg:grid-cols-[1.3fr_0.7fr]">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="status-pill">{getModeLabel(analysis.mode)}</span>
@@ -143,6 +167,7 @@ export function AnalysisResult({ analysis }: AnalysisResultProps) {
               {getProviderLabel(generation.provider)} / {generation.model}
             </span>
           </div>
+
           <h1 className="display-title mt-5 text-3xl font-semibold text-ink lg:text-4xl">
             {displayTitle}
           </h1>
@@ -151,17 +176,14 @@ export function AnalysisResult({ analysis }: AnalysisResultProps) {
           </p>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            <VersionMetric label="主路线" value={currentChoice} />
             <VersionMetric
-              label="主推荐路径"
-              value={currentChoice}
+              label="时间范围"
+              value={analysis.problem_definition.time_horizon}
             />
             <VersionMetric
-              label="运行档位"
+              label="模型档位"
               value={getModelProfileLabel(generation.model_profile ?? "balanced")}
-            />
-            <VersionMetric
-              label="最近更新时间"
-              value={formatDateTime(analysis.updated_at)}
             />
           </div>
         </div>
@@ -193,8 +215,8 @@ export function AnalysisResult({ analysis }: AnalysisResultProps) {
         title={
           generation.generation_mode === "rerun" ? "重演版本说明" : "结果版本说明"
         }
-        eyebrow="版本"
-        description="让用户清楚看到这次结果来自哪里、变化了什么，而不是只看到一页新的回答。"
+        eyebrow="Version"
+        description="这部分只回答一个问题：这一版和上一版相比，到底变化了什么。"
       >
         <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
           <div className="space-y-4">
@@ -210,8 +232,8 @@ export function AnalysisResult({ analysis }: AnalysisResultProps) {
               </p>
               <h3 className="mt-2 text-lg font-semibold text-ink">
                 {generation.generation_mode === "rerun"
-                  ? `这是第 ${generation.rerun_sequence} 次重演生成的新版本`
-                  : "这是首次生成的初始版本"}
+                  ? `这是第 ${generation.rerun_sequence} 次重演后的新版本`
+                  : "这是首次生成的初版结果"}
               </h3>
               <p className="mt-3 text-sm leading-6 text-ink/85">
                 {generation.change_summary}
@@ -232,7 +254,7 @@ export function AnalysisResult({ analysis }: AnalysisResultProps) {
                     ))
                   ) : (
                     <span className="rounded-full border border-line bg-canvas px-3 py-1 text-xs tracking-[0.16em] text-muted">
-                      本次没有明显的结构性变化
+                      这次没有明显结构变化
                     </span>
                   )}
                 </div>
@@ -250,8 +272,7 @@ export function AnalysisResult({ analysis }: AnalysisResultProps) {
                       </p>
                       {generation.source_updated_at ? (
                         <p className="mt-1 text-xs text-muted">
-                          上一版更新时间：
-                          {formatDateTime(generation.source_updated_at)}
+                          上一版更新时间：{formatDateTime(generation.source_updated_at)}
                         </p>
                       ) : null}
                     </div>
@@ -268,7 +289,7 @@ export function AnalysisResult({ analysis }: AnalysisResultProps) {
               </>
             ) : (
               <p className="text-sm leading-6 text-muted">
-                这还是第一版结果，所以没有对比对象。后续重演后，这里会展示版本来源、变化模块和差异摘要。
+                这还是第一版结果，所以没有对比对象。后续重演后，这里会继续展示版本来源、差异模块和主路线变化。
               </p>
             )}
           </div>
@@ -287,13 +308,12 @@ export function AnalysisResult({ analysis }: AnalysisResultProps) {
               value={`${getProviderLabel(generation.provider)} / ${generation.model}`}
             />
             <VersionMetric
-              label="模型档位"
-              value={getModelProfileLabel(generation.model_profile ?? "balanced")}
+              label="本次耗时"
+              value={formatDurationMs(generation.elapsed_ms)}
             />
-            <VersionMetric label="本次耗时" value={formatDurationMs(generation.elapsed_ms)} />
             <VersionMetric label="置信度变化" value={confidenceDeltaText} />
             <VersionMetric
-              label="主推荐变化"
+              label="主路线变化"
               value={
                 previousChoice
                   ? generation.primary_choice_changed
@@ -306,11 +326,22 @@ export function AnalysisResult({ analysis }: AnalysisResultProps) {
         </div>
       </SectionCard>
 
+      <SectionCard
+        title="执行地图"
+        eyebrow="Roadmap"
+        description="先决定主路线，再看时间轴动作。这样用户看完结果页就能直接开始执行。"
+      >
+        <AnalysisRoadmapPanel
+          nextActions={analysis.next_actions}
+          recommendedPaths={analysis.recommended_paths}
+        />
+      </SectionCard>
+
       <div className="grid gap-6 lg:grid-cols-[0.96fr_1.04fr]">
         <SectionCard
           title="问题框定"
-          eyebrow="Problem Frame"
-          description="先对齐目标，再看变量。否则后面的路径都只是漂亮话。"
+          eyebrow="Problem"
+          description="如果目标定义不清楚，后面的路径再漂亮也没有意义。"
         >
           <p className="text-sm leading-6 text-muted">
             {analysis.problem_definition.objective}
@@ -330,7 +361,7 @@ export function AnalysisResult({ analysis }: AnalysisResultProps) {
         <SectionCard
           title="当前基线"
           eyebrow="Baseline"
-          description="事实、约束和未知项被拆开后，才有资格谈因果和策略。"
+          description="把事实、约束和未知项拆开看，才能知道判断建立在什么地基上。"
         >
           <div className="grid gap-4 md:grid-cols-3">
             <ListBlock title="事实" items={analysis.current_state.facts} />
@@ -341,9 +372,9 @@ export function AnalysisResult({ analysis }: AnalysisResultProps) {
       </div>
 
       <SectionCard
-        title="关键变量雷达"
+        title="关键变量"
         eyebrow="Drivers"
-        description="这里展示当前问题里最值得盯住的变量，而不是堆满一张无关信息表。"
+        description="这些变量是当前问题里最值得盯住的杠杆，不是装饰性的标签云。"
       >
         <div className="grid gap-4 xl:grid-cols-3">
           {analysis.variables.map((variable) => (
@@ -377,11 +408,11 @@ export function AnalysisResult({ analysis }: AnalysisResultProps) {
         </div>
       </SectionCard>
 
-      <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+      <div className="grid gap-6 lg:grid-cols-[1.02fr_0.98fr]">
         <SectionCard
           title="因果图谱"
           eyebrow="Causal Map"
-          description="不是简单列点，而是把变量之间的推动、约束和削弱关系结构化展示出来。"
+          description="把变量之间的推动、约束和削弱关系画清楚，路径判断才有来历。"
         >
           <CausalGraphPanel
             variables={analysis.variables}
@@ -390,17 +421,17 @@ export function AnalysisResult({ analysis }: AnalysisResultProps) {
         </SectionCard>
         <SectionCard
           title="情景分支"
-          eyebrow="Scenario Lanes"
-          description="从单一路径改成概率带 + 触发条件 + 观察信号，更适合真实决策。"
+          eyebrow="Scenarios"
+          description="不是只给一个结论，而是给出几种可能走向、触发条件和观察信号。"
         >
           <ScenarioPanel scenarios={analysis.scenarios} />
         </SectionCard>
       </div>
 
       <SectionCard
-        title="路线奖励模拟"
+        title="路径收益模拟"
         eyebrow="Reward Map"
-        description="用可解释维度去比较三条路径的速度、稳定性、杠杆效率和保留选项。"
+        description="把三条路线的速度、稳定性、杠杆效率和可回退空间并排比较。"
       >
         <StrategyRewardPanel
           recommendedPaths={analysis.recommended_paths}
@@ -410,42 +441,39 @@ export function AnalysisResult({ analysis }: AnalysisResultProps) {
       </SectionCard>
 
       <SectionCard
-        title="推荐路径"
-        eyebrow="Action Design"
-        description="把最快、最好、最稳三条路径并排展示，方便直接比较。"
+        title="路线对比"
+        eyebrow="Path Options"
+        description="最快、最好、最稳三条路线都展开给你看，便于直接比较和落地。"
       >
         <div className="grid gap-4 lg:grid-cols-3">
-          <PathCard title="最快路径" path={analysis.recommended_paths.fastest} />
-          <PathCard title="最好路径" path={analysis.recommended_paths.best} />
-          <PathCard title="最稳路径" path={analysis.recommended_paths.safest} />
-        </div>
-        <div className="mt-5 rounded-[1.25rem] border border-brand/20 bg-brand/10 px-5 py-4 text-sm text-brand">
-          {analysis.recommended_paths.reason}
+          <PathCard title="最快路线" path={analysis.recommended_paths.fastest} />
+          <PathCard title="最好路线" path={analysis.recommended_paths.best} />
+          <PathCard title="最稳路线" path={analysis.recommended_paths.safest} />
         </div>
       </SectionCard>
 
-      <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+      <div className="grid gap-6 lg:grid-cols-[0.96fr_1.04fr]">
         <SectionCard
-          title="风险点"
-          eyebrow="Failure Modes"
-          description="风险不会被省略，只会被说清楚。每个风险都要配上应对动作。"
+          title="风险缓冲"
+          eyebrow="Risk"
+          description="结果不是只告诉你去做什么，也要告诉你哪些地方最容易失手。"
         >
           <div className="space-y-4">
             {analysis.risks.map((risk) => (
               <div
                 key={risk.name}
-                className="rounded-[1.25rem] border border-line bg-canvas p-5"
+                className="rounded-[1.2rem] border border-line bg-canvas p-4"
               >
-                <div className="flex items-center justify-between gap-4">
-                  <h3 className="text-base font-semibold text-ink">{risk.name}</h3>
-                  <span className="rounded-full border border-warning/25 bg-warning/10 px-3 py-1 text-xs tracking-[0.18em] text-warning">
-                    {getRiskLabel(risk.level)}
-                  </span>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-base font-semibold text-ink">{risk.name}</p>
+                  <span className="status-pill">{getRiskLabel(risk.level)}</span>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-muted">
                   {risk.description}
                 </p>
-                <p className="mt-3 text-sm text-ink/85">{risk.mitigation}</p>
+                <p className="mt-2 text-sm text-ink/85">
+                  缓冲动作：{risk.mitigation}
+                </p>
               </div>
             ))}
           </div>
@@ -454,66 +482,26 @@ export function AnalysisResult({ analysis }: AnalysisResultProps) {
         <SectionCard
           title="观察信号"
           eyebrow="Signals"
-          description="这部分决定你之后该盯什么，而不是做完一次推演就结束。"
+          description="这些信号决定你该继续推进、暂停，还是发起下一次重演。"
         >
           <div className="space-y-4">
-            {analysis.watch_signals.map((signal) => (
+            {analysis.watch_signals.map((item) => (
               <div
-                key={signal.signal}
-                className="rounded-[1.25rem] border border-line bg-canvas p-5"
+                key={item.signal}
+                className="rounded-[1.2rem] border border-line bg-canvas p-4"
               >
-                <h3 className="text-base font-semibold text-ink">
-                  {signal.signal}
-                </h3>
-                <p className="mt-3 text-sm leading-6 text-muted">
-                  {signal.why_it_matters}
+                <p className="text-base font-semibold text-ink">{item.signal}</p>
+                <p className="mt-2 text-sm leading-6 text-muted">
+                  为什么重要：{item.why_it_matters}
                 </p>
-                <p className="mt-3 text-sm text-ink/85">
-                  {signal.what_change_means}
+                <p className="mt-2 text-sm text-ink/85">
+                  一旦变化意味着：{item.what_change_means}
                 </p>
               </div>
             ))}
           </div>
         </SectionCard>
       </div>
-
-      <SectionCard
-        title="下一步动作"
-        eyebrow="Execution"
-        description="把结论压缩成可执行动作，避免结果页停留在理解层。"
-      >
-        <div className="grid gap-4 md:grid-cols-3">
-          {analysis.next_actions.map((item) => (
-            <div
-              key={`${item.horizon}-${item.action}`}
-              className="rounded-[1.25rem] border border-line bg-canvas p-5"
-            >
-              <p className="text-xs tracking-[0.2em] text-muted">
-                {getHorizonLabel(item.horizon)}
-              </p>
-              <h3 className="mt-2 text-base font-semibold text-ink">
-                {item.action}
-              </h3>
-              <p className="mt-3 text-sm leading-6 text-muted">
-                {item.expected_outcome}
-              </p>
-            </div>
-          ))}
-        </div>
-      </SectionCard>
-    </div>
-  );
-}
-
-function ListBlock({ title, items }: { title: string; items: string[] }) {
-  return (
-    <div className="rounded-[1.25rem] border border-line bg-canvas p-5">
-      <p className="text-xs tracking-[0.2em] text-muted">{title}</p>
-      <ul className="mt-3 space-y-2 text-sm text-ink/85">
-        {items.map((item) => (
-          <li key={item}>{item}</li>
-        ))}
-      </ul>
     </div>
   );
 }

@@ -218,6 +218,19 @@ export interface AdminUserUpdateRequest {
   monthly_usage?: number;
 }
 
+export interface AdminUserCreateRequest {
+  name: string;
+  email: string;
+  company: string;
+  password: string;
+  role: UserRole;
+  plan_id: string;
+}
+
+export interface AdminUserDeleteResponse {
+  message: string;
+}
+
 export interface AdminPlanUpdateRequest {
   name?: string;
   description?: string;

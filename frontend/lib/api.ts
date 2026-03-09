@@ -1,6 +1,8 @@
 import { clearSessionToken, getSessionToken } from "@/lib/auth";
 import type {
   AccountOverviewRecord,
+  AdminUserCreateRequest,
+  AdminUserDeleteResponse,
   AdminOrganizationRecord,
   AdminOverviewRecord,
   AdminPlanRecord,
@@ -327,6 +329,25 @@ export async function updateAdminUser(
   return readJson<AdminUserRecord>(`/api/admin/users/${userId}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
+    requiresAuth: true
+  });
+}
+
+export async function createAdminUser(
+  payload: AdminUserCreateRequest
+): Promise<AdminUserRecord> {
+  return readJson<AdminUserRecord>("/api/admin/users", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    requiresAuth: true
+  });
+}
+
+export async function deleteAdminUser(
+  userId: string
+): Promise<AdminUserDeleteResponse> {
+  return readJson<AdminUserDeleteResponse>(`/api/admin/users/${userId}`, {
+    method: "DELETE",
     requiresAuth: true
   });
 }
